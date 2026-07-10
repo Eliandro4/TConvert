@@ -1,682 +1,624 @@
-﻿/*******************************************************************************
- * Copyright (C) 2014-2015 Anton Gustafsson
+﻿#region HEADER
+/* This file was derived from libmspack
+ * (C) 2003-2004 Stuart Caie.
+ * (C) 2011 Ali Scissons.
  *
+ * The LZX method was created by Jonathan Forbes and Tomi Poutanen, adapted
+ * by Microsoft Corporation.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
+ * This source file is Dual licensed; meaning the end-user of this source file
+ * may redistribute/modify it under the LGPL 2.1 or MS-PL licenses.
+ */
+#region LGPL License
+/* GNU LESSER GENERAL PUBLIC LICENSE version 2.1
+ * LzxDecoder is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU Lesser General Public License (LGPL) version 2.1
+ */
+#endregion
+#region MS-PL License
+/*
+ * MICROSOFT PUBLIC LICENSE
+ * This source code is subject to the terms of the Microsoft Public License (Ms-PL).
  *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
+ * Redistribution and use in source and binary forms, with or without modification,
+ * is permitted provided that redistributions of the source code retain the above
+ * copyright notices and this file header.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- ******************************************************************************/
+ * Additional copyright notices should be appended to the list above.
+ *
+ * For details, see <http://www.opensource.org/licenses/ms-pl.html>.
+ */
+#endregion
+/*
+ * This derived work is recognized by Stuart Caie and is authorized to adapt
+ * any changes made to lzxd.c in his libmspack library and will still retain
+ * this dual licensing scheme. Big thanks to Stuart Caie!
+ *
+ * DETAILS
+ * This file is a pure C# port of the lzxd.c file from libmspack, with minor
+ * changes towards the decompression of XNB files. The original decompression
+ * software of LZX encoded data was written by Suart Caie in his
+ * libmspack/cabextract projects, which can be located at
+ * http://http://www.cabextract.org.uk/
+ */
+#endregion
+
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using TConvert.Util;
 
 namespace TConvert.Extract {
-	public class LzxDecoder {
+	/**<summary>A pure C# LZX decompressor (upstream MonoGame LzxDecoder).</summary>*/
+	public class LzxDecoder
+	{
+		public static uint[] position_base = null;
+		public static byte[] extra_bits = null;
 
-		private const int MinMatch = 2;
-		private const int NumChars = 256;
-		private const int PretreeNumElements = 20;
-		private const int AlignedNumElements = 8;
-		private const int NumPrimaryLengths = 7;
-		private const int NumSecondaryLengths = 249;
+		private LzxState m_state;
 
-		private const int PretreeMaxSymbols = PretreeNumElements;
-		private const int PretreeTableBits = 6;
-		private const int MaintreeMaxSymbols = NumChars + 50 * 8;
-		private const int MaintreeTableBits = 12;
-		private const int LengthMaxSymbols = NumSecondaryLengths + 1;
-		private const int LengthTableBits = 12;
-		private const int AlignedMaxSymbols = AlignedNumElements;
-		private const int AlignedTableBits = 7;
+		/**<summary>Create a decoder with a given window size (power of 2, 15-21).</summary>*/
+		public LzxDecoder (int window)
+		{
+			uint wndsize = (uint)(1 << window);
+			int posn_slots;
 
-		private static readonly int[] positionBase;
-		private static readonly int[] extraBits;
+			if(window < 15 || window > 21) throw new UnsupportedWindowSizeRange();
 
-		static LzxDecoder() {
-			extraBits = new int[52];
-			for (int i = 0, j = 0; i <= 50; i += 2) {
-				extraBits[i] = extraBits[i + 1] = (byte)j;
-				if ((i != 0) && (j < 17))
-					j++;
+			m_state = new LzxState();
+			m_state.actual_size = 0;
+			m_state.window = new byte[wndsize];
+			for(int i = 0; i < wndsize; i++) m_state.window[i] = 0xDC;
+			m_state.actual_size = wndsize;
+			m_state.window_size = wndsize;
+			m_state.window_posn = 0;
+
+			if(extra_bits == null) {
+				extra_bits = new byte[52];
+				for(int i = 0, j = 0; i <= 50; i += 2) {
+					extra_bits[i] = extra_bits[i+1] = (byte)j;
+					if ((i != 0) && (j < 17)) j++;
+				}
+			}
+			if(position_base == null) {
+				position_base = new uint[51];
+				for(int i = 0, j = 0; i <= 50; i++) {
+					position_base[i] = (uint)j;
+					j += 1 << extra_bits[i];
+				}
 			}
 
-			positionBase = new int[51];
-			for (int i = 0, j = 0; i <= 50; i++) {
-				positionBase[i] = j;
-				j += 1 << extraBits[i];
-			}
+			if(window == 20) posn_slots = 42;
+			else if(window == 21) posn_slots = 50;
+			else posn_slots = window << 1;
+
+			m_state.R0 = m_state.R1 = m_state.R2 = 1;
+			m_state.main_elements = (ushort)(LzxConstants.NUM_CHARS + (posn_slots << 3));
+			m_state.header_read = 0;
+			m_state.frames_read = 0;
+			m_state.block_remaining = 0;
+			m_state.block_type = LzxConstants.BLOCKTYPE.INVALID;
+			m_state.intel_curpos = 0;
+			m_state.intel_started = 0;
+
+			m_state.PRETREE_table = new ushort[(1 << LzxConstants.PRETREE_TABLEBITS) + (LzxConstants.PRETREE_MAXSYMBOLS << 1)];
+			m_state.PRETREE_len = new byte[LzxConstants.PRETREE_MAXSYMBOLS + LzxConstants.LENTABLE_SAFETY];
+			m_state.MAINTREE_table = new ushort[(1 << LzxConstants.MAINTREE_TABLEBITS) + (LzxConstants.MAINTREE_MAXSYMBOLS << 1)];
+			m_state.MAINTREE_len = new byte[LzxConstants.MAINTREE_MAXSYMBOLS + LzxConstants.LENTABLE_SAFETY];
+			m_state.LENGTH_table = new ushort[(1 << LzxConstants.LENGTH_TABLEBITS) + (LzxConstants.LENGTH_MAXSYMBOLS << 1)];
+			m_state.LENGTH_len = new byte[LzxConstants.LENGTH_MAXSYMBOLS + LzxConstants.LENTABLE_SAFETY];
+			m_state.ALIGNED_table = new ushort[(1 << LzxConstants.ALIGNED_TABLEBITS) + (LzxConstants.ALIGNED_MAXSYMBOLS << 1)];
+			m_state.ALIGNED_len = new byte[LzxConstants.ALIGNED_MAXSYMBOLS + LzxConstants.LENTABLE_SAFETY];
+			for(int i = 0; i < LzxConstants.MAINTREE_MAXSYMBOLS; i++) m_state.MAINTREE_len[i] = 0;
+			for(int i = 0; i < LzxConstants.LENGTH_MAXSYMBOLS; i++) m_state.LENGTH_len[i] = 0;
 		}
 
-		private enum LzxBlockType {
-			Invalid,
-			Verbatim,
-			Aligned,
-			Uncompressed
-		}
+		/**<summary>Decompress LZX data from a stream.</summary>*/
+		/// <returns>0 on success, -1 on error.</returns>
+		public int Decompress(Stream inData, int inLen, Stream outData, int outLen)
+		{
+			BitBuffer bitbuf = new BitBuffer(inData);
+			long startpos = inData.Position;
+			long endpos = inData.Position + inLen;
 
+			byte[] window = m_state.window;
 
-		/**<summary>LRU offset system</summary>*/
-		private int R0, R1, R2;
+			uint window_posn = m_state.window_posn;
+			uint window_size = m_state.window_size;
+			uint R0 = m_state.R0;
+			uint R1 = m_state.R1;
+			uint R2 = m_state.R2;
+			uint i, j;
 
-		/**<summary>Decoding window</summary>*/
-		private byte[] window;
-		private int windowSize;
-		private int windowPos;
-
-		private int mainElementCount;
-
-		/**<summary>Current block information</summary>*/
-		private LzxBlockType blockType;
-		private int blockLength = 0;
-		private int blockRemaining = 0;
-
-		/**<summary>Intel CALL instruction optimization</summary>*/
-		private int intelFileSize;
-		private int intelCurrentPosition;
-		private bool intelStarted;
-
-		/**<summary>Decoding tables</summary>*/
-		private HuffTable preTree;
-		private HuffTable mainTree;
-		private HuffTable lengthTree;
-		private HuffTable alignedTree;
-
-		// private int actualSize = 0;
-		private int framesRead = 0;
-
-		/**<summary>Whether the file header should be read</summary>*/
-		private bool readHeader = true;
-
-
-		public LzxDecoder() {
-			preTree = new HuffTable(PretreeMaxSymbols, PretreeTableBits);
-			mainTree = new HuffTable(MaintreeMaxSymbols, MaintreeTableBits);
-			lengthTree = new HuffTable(LengthMaxSymbols, LengthTableBits);
-			alignedTree = new HuffTable(AlignedMaxSymbols, AlignedTableBits);
-		}
-
-		private void Reset() {
-			R0 = R1 = R2 = 1;
-			readHeader = true;
-			windowSize = 1 << 16;
-			// actualSize = windowSize;
-			window = new byte[windowSize];
-			window.Fill((byte)0xDC);
-			
-			windowPos = 0;
-			mainElementCount = NumChars + (16 << 4);
-			readHeader = true;
-			framesRead = 0;
-			blockRemaining = 0;
-			blockType = LzxBlockType.Invalid;
-			intelCurrentPosition = 0;
-			intelStarted = false;
-
-			preTree.Reset();
-			mainTree.Reset();
-			lengthTree.Reset();
-			alignedTree.Reset();
-		}
-
-		public void Decompress(BinaryReader input, int inputLength,
-				MemoryStream output, int outputLength) {
-
-			Reset();
-
-			int endPosition = (int)input.BaseStream.Position + inputLength;
-			// the size of the input (compressed data)
-			int blockSize;
-			// the size of the output (decompressed data)
-			int frameSize;
-			int pos = (int)input.BaseStream.Position;
-
-			while ((int)input.BaseStream.Position < endPosition) {
-
-				// System.out.println("pos=" + pos);
-
-				// seek to the correct position
-				// input.rewind();
-				input.BaseStream.Position = pos;
-
-				// System.out.println("input.position= " + input.position());
-
-				int hi, lo;
-				hi = input.ReadByte() & 0xFF;
-				lo = input.ReadByte() & 0xFF;
-				blockSize = (hi << 8) | lo;
-				// all blocks by default will output 32Kb of data, so thus
-				// is our frame size
-				frameSize = 0x8000;
-				// ... unless this block is special, that it outputs a different
-				// amount of data. this blocks header is identified by a 0xFF byte
-				if (hi == 0xFF) {
-					// that means the lo byte was the hi byte
-					hi = lo;
-					lo = input.ReadByte() & 0xFF;
-					// ... which combined to a different output/frame size for this
-					// particular block
-					frameSize = (hi << 8) | lo;
-					// now get our block size
-					hi = input.ReadByte() & 0xFF;
-					lo = input.ReadByte() & 0xFF;
-					blockSize = (hi << 8) | lo;
-					pos += 5;
-				}
-				else {
-					pos += 2;
-				}
-
-				// System.out.println("FrameSize=" + frameSize);
-				// System.out.println("#BlockSize=" + blockSize);
-
-				// either says there is nothing to decode
-				if (blockSize == 0 || frameSize == 0) {
-					// System.out.println("Done decompressing");
-					break;
-				}
-
-				DecompressBlock(input, blockSize, output, frameSize);
-				pos += blockSize;
-			}
-
-		}
-
-		private void DecompressBlock(BinaryReader input, int inputLength,
-				MemoryStream output, int outputLength) {
-			BinaryReader outputReader = new BinaryReader(output);
-			BinaryWriter outputWriter = new BinaryWriter(output);
-
-			int startpos = (int)input.BaseStream.Position;
-			int endpos = startpos + inputLength;
-
-			LzxBuffer buffer = new LzxBuffer(input);
-
-			if (readHeader) {
-				if (buffer.ReadBits(1) == 1) {
-					// Intel optimization header
-					int hi = buffer.ReadBits(16);
-					int lo = buffer.ReadBits(16);
-					intelFileSize = (hi << 16) | lo;
-
-					// System.out.println("Intel file size: " + intelFileSize);
-				}
-
-				readHeader = false;
-			}
-
-			int window_posn = windowPos;
-			int window_size = windowSize;
-			int R0 = this.R0;
-			int R1 = this.R1;
-			int R2 = this.R2;
-
-			int togo = outputLength;
-			int this_run, main_element, match_length, match_offset, length_footer, extra, verbatim_bits;
+			int togo = outLen, this_run, main_element, match_length, match_offset, length_footer, extra, verbatim_bits;
 			int rundest, runsrc, copy_length, aligned_bits;
 
-			// System.out.println("window_posn=" + window_posn);
-			// System.out.println("window_size=" + window_size);
-			// System.out.println("R0=" + R0);
-			// System.out.println("R1=" + R1);
-			// System.out.println("R2=" + R2);
+			bitbuf.InitBitStream();
 
-			while (togo > 0) {
-				// System.out.println("Togo: " + togo);
+			if(m_state.header_read == 0) {
+				uint intel = bitbuf.ReadBits(1);
+				if(intel != 0) {
+					i = bitbuf.ReadBits(16); j = bitbuf.ReadBits(16);
+					m_state.intel_filesize = (int)((i << 16) | j);
+				}
+				m_state.header_read = 1;
+			}
 
-				if (blockRemaining == 0) {
-					// System.out.println("Current block type: " + blockType);
-					if (blockType == LzxBlockType.Uncompressed) {
-
-						// realign bitstream to word
-						if ((blockLength & 1) == 1) {
-							input.ReadByte();
-						}
-						buffer.Reset();
+			while(togo > 0) {
+				if(m_state.block_remaining == 0) {
+					if(m_state.block_type == LzxConstants.BLOCKTYPE.UNCOMPRESSED) {
+						if((m_state.block_length & 1) == 1) inData.ReadByte();
+						bitbuf.InitBitStream();
 					}
 
-					int nextBlockType = buffer.ReadBits(3);
-					if (nextBlockType > 3) {
-						throw new Exception("Invalid block type: " + nextBlockType);
-					}
+					m_state.block_type = (LzxConstants.BLOCKTYPE)bitbuf.ReadBits(3);
+					i = bitbuf.ReadBits(16);
+					j = bitbuf.ReadBits(8);
+					m_state.block_remaining = m_state.block_length = (uint)((i << 8) | j);
 
-					blockType = (LzxBlockType)nextBlockType;
+					switch(m_state.block_type) {
+					case LzxConstants.BLOCKTYPE.ALIGNED:
+						for(i = 0, j = 0; i < 8; i++) { j = bitbuf.ReadBits(3); m_state.ALIGNED_len[i] = (byte)j; }
+						MakeDecodeTable(LzxConstants.ALIGNED_MAXSYMBOLS, LzxConstants.ALIGNED_TABLEBITS,
+						                m_state.ALIGNED_len, m_state.ALIGNED_table);
+						goto case LzxConstants.BLOCKTYPE.VERBATIM;
 
-					// System.out.println("New block type: " + blockType);
+					case LzxConstants.BLOCKTYPE.VERBATIM:
+						ReadLengths(m_state.MAINTREE_len, 0, 256, bitbuf);
+						ReadLengths(m_state.MAINTREE_len, 256, m_state.main_elements, bitbuf);
+						MakeDecodeTable(LzxConstants.MAINTREE_MAXSYMBOLS, LzxConstants.MAINTREE_TABLEBITS,
+						                m_state.MAINTREE_len, m_state.MAINTREE_table);
+						if(m_state.MAINTREE_len[0xE8] != 0) m_state.intel_started = 1;
 
-					int a = buffer.ReadBits(16);
-					int b = buffer.ReadBits(8);
-
-					blockLength = (a << 8) | b;
-					blockRemaining = blockLength;
-
-					// System.out.println("Block length: " + blockLength);
-
-					switch (blockType) {
-					case LzxBlockType.Aligned:
-						for (int i = 0, j = 0; i < 8; ++i) {
-							j = buffer.ReadBits(3);
-							alignedTree.Length[i] = (byte)j;
-							// System.out.println("I= " + i + ", J=" + j);
-						}
-						alignedTree.MakeDecodeTable();
-						/*
-						 * Rest of aligned header is the same as verbatim,
-						 * fall through case.
-						 */
-						goto case LzxBlockType.Verbatim;
-					case LzxBlockType.Verbatim:
-						ReadLengths(mainTree.Length, 0, 256, buffer);
-						ReadLengths(mainTree.Length, 256, mainElementCount, buffer);
-						mainTree.MakeDecodeTable();
-						if (mainTree.Length[0xE8] != 0)
-							intelStarted = true;
-
-						ReadLengths(lengthTree.Length, 0, NumSecondaryLengths, buffer);
-						lengthTree.MakeDecodeTable();
+						ReadLengths(m_state.LENGTH_len, 0, LzxConstants.NUM_SECONDARY_LENGTHS, bitbuf);
+						MakeDecodeTable(LzxConstants.LENGTH_MAXSYMBOLS, LzxConstants.LENGTH_TABLEBITS,
+						                m_state.LENGTH_len, m_state.LENGTH_table);
 						break;
-					case LzxBlockType.Uncompressed:
-						intelStarted = true; /* because we can't assume otherwise */
-						buffer.EnsureBits(16); /* get up to 16 pad bits into the buffer */
-						if (buffer.RemainingBits > 16) {
-							input.BaseStream.Position -= 2; /* and align the bitstream! */
-						}
+
+					case LzxConstants.BLOCKTYPE.UNCOMPRESSED:
+						m_state.intel_started = 1;
+						bitbuf.EnsureBits(16);
+						if(bitbuf.GetBitsLeft() > 16) inData.Seek(-2, SeekOrigin.Current);
 						byte hi, mh, ml, lo;
-						lo = input.ReadByte();
-						ml = input.ReadByte();
-						mh = input.ReadByte();
-						hi = input.ReadByte();
-						R0 = (int)(lo | ml << 8 | mh << 16 | hi << 24);
-						lo = input.ReadByte();
-						ml = input.ReadByte();
-						mh = input.ReadByte();
-						hi = input.ReadByte();
-						R1 = (int)(lo | ml << 8 | mh << 16 | hi << 24);
-						lo = input.ReadByte();
-						ml = input.ReadByte();
-						mh = input.ReadByte();
-						hi = input.ReadByte();
-						R2 = (int)(lo | ml << 8 | mh << 16 | hi << 24);
+						lo = (byte)inData.ReadByte(); ml = (byte)inData.ReadByte(); mh = (byte)inData.ReadByte(); hi = (byte)inData.ReadByte();
+						R0 = (uint)(lo | ml << 8 | mh << 16 | hi << 24);
+						lo = (byte)inData.ReadByte(); ml = (byte)inData.ReadByte(); mh = (byte)inData.ReadByte(); hi = (byte)inData.ReadByte();
+						R1 = (uint)(lo | ml << 8 | mh << 16 | hi << 24);
+						lo = (byte)inData.ReadByte(); ml = (byte)inData.ReadByte(); mh = (byte)inData.ReadByte(); hi = (byte)inData.ReadByte();
+						R2 = (uint)(lo | ml << 8 | mh << 16 | hi << 24);
 						break;
+
 					default:
-						throw new Exception("Unknown block type " + blockType);
+						return -1;
 					}
 				}
 
-				/* buffer exhaustion check */
-				if ((int)input.BaseStream.Position > (startpos + inputLength)) {
-					/*
-					 * it's possible to have a file where the next run is less than
-					 * 16 bits in size. In this case, the READ_HUFFSYM() macro used
-					 * in building the tables will exhaust the buffer, so we should
-					 * allow for this, but not allow those accidentally read bits to
-					 * be used (so we check that there are at least 16 bits
-					 * remaining - in this boundary case they aren't really part of
-					 * the compressed data)
-					 */
-					// System.out.println("WTF");
-
-					if ((int)input.BaseStream.Position > (startpos + inputLength + 2) || buffer.RemainingBits < 16)
-						throw new Exception();
+				if(inData.Position > (startpos + inLen)) {
+					if(inData.Position > (startpos+inLen+2) || bitbuf.GetBitsLeft() < 16) return -1;
 				}
 
-				while ((this_run = (int)blockRemaining) > 0 && togo > 0) {
-					if (this_run > togo)
-						this_run = togo;
+				while((this_run = (int)m_state.block_remaining) > 0 && togo > 0) {
+					if(this_run > togo) this_run = togo;
 					togo -= this_run;
-					blockRemaining -= this_run;
+					m_state.block_remaining -= (uint)this_run;
 
-					/* apply 2^x-1 mask */
 					window_posn &= window_size - 1;
+					if((window_posn + this_run) > window_size)
+						return -1;
 
-					// System.out.println("this_run= " + this_run);
-					// System.out.println("togo= " + togo);
-					// System.out.println("blockRemaining= " + blockRemaining);
-					// System.out.println("window_posn= " + window_posn);
-					// System.out.println("window_size= " + window_size);
-
-					/* runs can't straddle the window wraparound */
-					if ((window_posn + this_run) > window_size)
-						throw new Exception("(window_posn + this_run) > window_size");
-
-					switch (blockType) {
-					case LzxBlockType.Verbatim:
-						while (this_run > 0) {
-							main_element = mainTree.ReadHuffSym(buffer);
-							// main_element = (int)ReadHuffSym(m_state.MAINTREE_table, m_state.MAINTREE_len,
-							// LzxConstants.MAINTREE_MAXSYMBOLS, LzxConstants.MAINTREE_TABLEBITS,
-							// bitbuf);
-							if (main_element < NumChars) {
-								/* literal: 0 to NUM_CHARS-1 */
+					switch(m_state.block_type) {
+					case LzxConstants.BLOCKTYPE.VERBATIM:
+						while(this_run > 0) {
+							main_element = (int)ReadHuffSym(m_state.MAINTREE_table, m_state.MAINTREE_len,
+							                           LzxConstants.MAINTREE_MAXSYMBOLS, LzxConstants.MAINTREE_TABLEBITS,
+							                           bitbuf);
+							if(main_element < LzxConstants.NUM_CHARS) {
 								window[window_posn++] = (byte)main_element;
 								this_run--;
-							}
-							else {
-								/* match: NUM_CHARS + ((slot<<3) | length_header (3 bits)) */
-								main_element -= NumChars;
+							} else {
+								main_element -= LzxConstants.NUM_CHARS;
 
-								match_length = main_element & NumPrimaryLengths;
-								if (match_length == NumPrimaryLengths) {
-									// length_footer = (int)ReadHuffSym(m_state.LENGTH_table, m_state.LENGTH_len,
-									// LzxConstants.LENGTH_MAXSYMBOLS, LzxConstants.LENGTH_TABLEBITS,
-									// bitbuf);
-									length_footer = lengthTree.ReadHuffSym(buffer);
+								match_length = main_element & LzxConstants.NUM_PRIMARY_LENGTHS;
+								if(match_length == LzxConstants.NUM_PRIMARY_LENGTHS) {
+									length_footer = (int)ReadHuffSym(m_state.LENGTH_table, m_state.LENGTH_len,
+									                            LzxConstants.LENGTH_MAXSYMBOLS, LzxConstants.LENGTH_TABLEBITS,
+									                            bitbuf);
 									match_length += length_footer;
 								}
-								match_length += MinMatch;
+								match_length += LzxConstants.MIN_MATCH;
 
 								match_offset = main_element >> 3;
 
-								if (match_offset > 2) {
-									/* not repeated offset */
-									if (match_offset != 3) {
-										extra = extraBits[match_offset];
-										verbatim_bits = (int)buffer.ReadBits(extra);
-										match_offset = (int)positionBase[match_offset] - 2 + verbatim_bits;
-									}
-									else {
+								if(match_offset > 2) {
+									if(match_offset != 3) {
+										extra = extra_bits[match_offset];
+										verbatim_bits = (int)bitbuf.ReadBits((byte)extra);
+										match_offset = (int)position_base[match_offset] - 2 + verbatim_bits;
+									} else {
 										match_offset = 1;
 									}
 
-									/* update repeated offset LRU queue */
-									R2 = R1;
-									R1 = R0;
-									R0 = match_offset;
-								}
-								else if (match_offset == 0) {
+									R2 = R1; R1 = R0; R0 = (uint)match_offset;
+								} else if(match_offset == 0) {
 									match_offset = (int)R0;
-								}
-								else if (match_offset == 1) {
+								} else if(match_offset == 1) {
 									match_offset = (int)R1;
-									R1 = R0;
-									R0 = match_offset;
-								}
-								else /* match_offset == 2 */
-								{
+									R1 = R0; R0 = (uint)match_offset;
+								} else {
 									match_offset = (int)R2;
-									R2 = R0;
-									R0 = match_offset;
+									R2 = R0; R0 = (uint)match_offset;
 								}
 
 								rundest = (int)window_posn;
 								this_run -= match_length;
 
-								/* copy any wrapped around source data */
-								if (window_posn >= match_offset) {
-									/* no wrap */
+								if(window_posn >= match_offset) {
 									runsrc = rundest - match_offset;
-								}
-								else {
+								} else {
 									runsrc = rundest + ((int)window_size - match_offset);
 									copy_length = match_offset - (int)window_posn;
-									if (copy_length < match_length) {
+									if(copy_length < match_length) {
 										match_length -= copy_length;
-										window_posn += copy_length;
-										while (copy_length-- > 0)
-											window[rundest++] = window[runsrc++];
+										window_posn += (uint)copy_length;
+										while(copy_length-- > 0) window[rundest++] = window[runsrc++];
 										runsrc = 0;
 									}
 								}
-								window_posn += match_length;
+								window_posn += (uint)match_length;
 
-								/* copy match data - no worries about destination wraps */
-								while (match_length-- > 0)
-									window[rundest++] = window[runsrc++];
+								while(match_length-- > 0) window[rundest++] = window[runsrc++];
 							}
 						}
 						break;
 
-					case LzxBlockType.Aligned:
-						while (this_run > 0) {
-							// main_element = (int)ReadHuffSym(m_state.MAINTREE_table, m_state.MAINTREE_len,
-							// LzxConstants.MAINTREE_MAXSYMBOLS, LzxConstants.MAINTREE_TABLEBITS,
-							// bitbuf);
-							main_element = mainTree.ReadHuffSym(buffer);
+					case LzxConstants.BLOCKTYPE.ALIGNED:
+						while(this_run > 0) {
+							main_element = (int)ReadHuffSym(m_state.MAINTREE_table, m_state.MAINTREE_len,
+							                           				  LzxConstants.MAINTREE_MAXSYMBOLS, LzxConstants.MAINTREE_TABLEBITS,
+							                           				  bitbuf);
 
-							// System.err.println("main_element= " + main_element);
-							// System.err.println("this_run= " + this_run);
-
-							if (main_element < NumChars) {
-								/* literal 0 to NUM_CHARS-1 */
+							if(main_element < LzxConstants.NUM_CHARS) {
 								window[window_posn++] = (byte)main_element;
 								this_run--;
-							}
-							else {
-								/* match: NUM_CHARS + ((slot<<3) | length_header (3 bits)) */
-								main_element -= NumChars;
+							} else {
+								main_element -= LzxConstants.NUM_CHARS;
 
-								match_length = main_element & NumPrimaryLengths;
-								// System.err.println("match_length= " + match_length);
-								if (match_length == NumPrimaryLengths) {
-									// length_footer = (int)ReadHuffSym(m_state.LENGTH_table, m_state.LENGTH_len,
-									// LzxConstants.LENGTH_MAXSYMBOLS, LzxConstants.LENGTH_TABLEBITS,
-									// bitbuf);
-									length_footer = lengthTree.ReadHuffSym(buffer);
-
-									// System.err.println("length_footer= " + length_footer);
-
+								match_length = main_element & LzxConstants.NUM_PRIMARY_LENGTHS;
+								if(match_length == LzxConstants.NUM_PRIMARY_LENGTHS) {
+									length_footer = (int)ReadHuffSym(m_state.LENGTH_table, m_state.LENGTH_len,
+									                            	 LzxConstants.LENGTH_MAXSYMBOLS, LzxConstants.LENGTH_TABLEBITS,
+									                            	 bitbuf);
 									match_length += length_footer;
 								}
-								match_length += MinMatch;
+								match_length += LzxConstants.MIN_MATCH;
 
 								match_offset = main_element >> 3;
 
-								// System.err.println("match_offset= " + match_offset);
-
-								if (match_offset > 2) {
-									/* not repeated offset */
-									extra = extraBits[match_offset];
-									match_offset = (int)positionBase[match_offset] - 2;
-									if (extra > 3) {
-										/* verbatim and aligned bits */
+								if(match_offset > 2) {
+									extra = extra_bits[match_offset];
+									match_offset = (int)position_base[match_offset] - 2;
+									if(extra > 3) {
 										extra -= 3;
-										verbatim_bits = (int)buffer.ReadBits(extra);
+										verbatim_bits = (int)bitbuf.ReadBits((byte)extra);
 										match_offset += (verbatim_bits << 3);
-										// aligned_bits = (int)ReadHuffSym(m_state.ALIGNED_table, m_state.ALIGNED_len,
-										// LzxConstants.ALIGNED_MAXSYMBOLS, LzxConstants.ALIGNED_TABLEBITS,
-										// bitbuf);
-										aligned_bits = alignedTree.ReadHuffSym(buffer);
+										aligned_bits = (int)ReadHuffSym(m_state.ALIGNED_table, m_state.ALIGNED_len,
+										                           LzxConstants.ALIGNED_MAXSYMBOLS, LzxConstants.ALIGNED_TABLEBITS,
+										                           bitbuf);
 										match_offset += aligned_bits;
-									}
-									else if (extra == 3) {
-										/* aligned bits only */
-										// aligned_bits = (int)ReadHuffSym(m_state.ALIGNED_table, m_state.ALIGNED_len,
-										// LzxConstants.ALIGNED_MAXSYMBOLS, LzxConstants.ALIGNED_TABLEBITS,
-										// bitbuf);
-										aligned_bits = alignedTree.ReadHuffSym(buffer);
+									} else if(extra == 3) {
+										aligned_bits = (int)ReadHuffSym(m_state.ALIGNED_table, m_state.ALIGNED_len,
+										                           LzxConstants.ALIGNED_MAXSYMBOLS, LzxConstants.ALIGNED_TABLEBITS,
+										                           bitbuf);
 										match_offset += aligned_bits;
-									}
-									else if (extra > 0) /* extra==1, extra==2 */
-									{
-										/* verbatim bits only */
-										verbatim_bits = buffer.ReadBits(extra);
+									} else if (extra > 0) {
+										verbatim_bits = (int)bitbuf.ReadBits((byte)extra);
 										match_offset += verbatim_bits;
-									}
-									else /* extra == 0 */
-									{
-										/* ??? */
+									} else {
 										match_offset = 1;
 									}
 
-									/* update repeated offset LRU queue */
-									R2 = R1;
-									R1 = R0;
-									R0 = match_offset;
-								}
-								else if (match_offset == 0) {
+									R2 = R1; R1 = R0; R0 = (uint)match_offset;
+								} else if( match_offset == 0) {
 									match_offset = (int)R0;
-								}
-								else if (match_offset == 1) {
+								} else if(match_offset == 1) {
 									match_offset = (int)R1;
-									R1 = R0;
-									R0 = match_offset;
-								}
-								else /* match_offset == 2 */
-								{
+									R1 = R0; R0 = (uint)match_offset;
+								} else {
 									match_offset = (int)R2;
-									R2 = R0;
-									R0 = match_offset;
+									R2 = R0; R0 = (uint)match_offset;
 								}
 
 								rundest = (int)window_posn;
 								this_run -= match_length;
 
-								/* copy any wrapped around source data */
-								if (window_posn >= match_offset) {
-									/* no wrap */
+								if(window_posn >= match_offset) {
 									runsrc = rundest - match_offset;
-								}
-								else {
+								} else {
 									runsrc = rundest + ((int)window_size - match_offset);
 									copy_length = match_offset - (int)window_posn;
-									if (copy_length < match_length) {
+									if(copy_length < match_length) {
 										match_length -= copy_length;
-										window_posn += copy_length;
-										while (copy_length-- > 0) {
-											window[rundest++] = window[runsrc++];
-										}
+										window_posn += (uint)copy_length;
+										while(copy_length-- > 0) window[rundest++] = window[runsrc++];
 										runsrc = 0;
 									}
 								}
-								window_posn += match_length;
+								window_posn += (uint)match_length;
 
-								/* copy match data - no worries about destination wraps */
-								while (match_length-- > 0) {
-									window[rundest++] = window[runsrc++];
-								}
+								while(match_length-- > 0) window[rundest++] = window[runsrc++];
 							}
 						}
 						break;
 
-					case LzxBlockType.Uncompressed:
-						if (((int)input.BaseStream.Position + this_run) > endpos)
-							throw new Exception("(input.position() + this_run) > endpos");
-
-						// byte[] temp_buffer = new byte[this_run];
-						// inData.Read(temp_buffer, 0, this_run);
-						// temp_buffer.CopyTo(window, (int)window_posn);
-
-						// input.get(window, window_posn, window.length - window_posn);
-						input.Read(window, window_posn, this_run);
-						window_posn += this_run;
+					case LzxConstants.BLOCKTYPE.UNCOMPRESSED:
+						if((inData.Position + this_run) > endpos) return -1;
+						byte[] temp_buffer = new byte[this_run];
+						inData.Read(temp_buffer, 0, this_run);
+						temp_buffer.CopyTo(window, (int)window_posn);
+						window_posn += (uint)this_run;
 						break;
 
 					default:
-						throw new Exception("Invalid block type: " + blockType);
+						return -1;
 					}
 				}
 			}
 
-			if (togo != 0)
-				throw new Exception("togo != 0");
+			if(togo != 0) return -1;
+			int start_window_pos = (int)window_posn;
+			if(start_window_pos == 0) start_window_pos = (int)window_size;
+			start_window_pos -= outLen;
+			outData.Write(window, start_window_pos, outLen);
 
-			int start_window_pos = (int) window_posn;
+			m_state.window_posn = window_posn;
+			m_state.R0 = R0;
+			m_state.R1 = R1;
+			m_state.R2 = R2;
 
-			if (start_window_pos == 0) {
-				start_window_pos = (int)window_size;
-			}
+			if((m_state.frames_read++ < 32768) && m_state.intel_filesize != 0) {
+				if(outLen <= 6 || m_state.intel_started == 0) {
+					m_state.intel_curpos += outLen;
+				} else {
+					int dataend = outLen - 10;
+					uint curpos = (uint)m_state.intel_curpos;
 
-			start_window_pos -= outputLength;
+					m_state.intel_curpos = (int)curpos + outLen;
 
-			// System.out.println("start_window_pos= " + start_window_pos);
-			// System.out.println("outputLength= " + outputLength);
-			// System.out.println("input.position= " + input.position());
-
-			outputWriter.Write(window, start_window_pos, outputLength);
-			// outData.Write(window, start_window_pos, outLen);
-
-			this.windowPos = window_posn;
-			this.R0 = R0;
-			this.R1 = R1;
-			this.R2 = R2;
-
-			// TODO finish intel E8 decoding
-			/* intel E8 decoding */
-			if ((framesRead++ < 32768) && intelFileSize != 0) {
-				if (outputLength <= 6 || !intelStarted) {
-					intelCurrentPosition += outputLength;
-				}
-				else {
-					int dataend = outputLength - 10;
-					int curpos = intelCurrentPosition;
-
-					intelCurrentPosition = (int)curpos + outputLength;
-
-					while ((int)output.Position < dataend) {
-						if (outputReader.ReadByte() != 0xE8) {
-							curpos++;
-							continue;
-						}
+					while(outData.Position < dataend) {
+						if(outData.ReadByte() != 0xE8) { curpos++; continue; }
 					}
 				}
-				// TODO: Is this an error?
-				// return -1;
+				return -1;
 			}
-			// return 0;
+			return 0;
 		}
 
-		private void ReadLengths(byte[] lens, int first, int last, LzxBuffer buffer) {
-			int x, y;
+		private int MakeDecodeTable(uint nsyms, uint nbits, byte[] length, ushort[] table)
+		{
+			ushort sym;
+			uint leaf;
+			byte bit_num = 1;
+			uint fill;
+			uint pos = 0;
+			uint table_mask = (uint)(1 << (int)nbits);
+			uint bit_mask = table_mask >> 1;
+			uint next_symbol = bit_mask;
+
+			while (bit_num <= nbits ) {
+				for(sym = 0; sym < nsyms; sym++) {
+					if(length[sym] == bit_num) {
+						leaf = pos;
+
+						if((pos += bit_mask) > table_mask) return 1;
+
+						fill = bit_mask;
+						while(fill-- > 0) table[leaf++] = sym;
+					}
+				}
+				bit_mask >>= 1;
+				bit_num++;
+			}
+
+			if(pos != table_mask) {
+				for(sym = (ushort)pos; sym < table_mask; sym++) table[sym] = 0;
+
+				pos <<= 16;
+				table_mask <<= 16;
+				bit_mask = 1 << 15;
+
+				while(bit_num <= 16) {
+					for(sym = 0; sym < nsyms; sym++) {
+						if(length[sym] == bit_num) {
+							leaf = pos >> 16;
+							for(fill = 0; fill < bit_num - nbits; fill++) {
+								if(table[leaf] == 0) {
+									table[(next_symbol << 1)] = 0;
+									table[(next_symbol << 1) + 1] = 0;
+									table[leaf] = (ushort)(next_symbol++);
+								}
+								leaf = (uint)(table[leaf] << 1);
+								if(((pos >> (int)(15-fill)) & 1) == 1) leaf++;
+							}
+							table[leaf] = sym;
+
+							if((pos += bit_mask) > table_mask) return 1;
+						}
+					}
+					bit_mask >>= 1;
+					bit_num++;
+				}
+			}
+
+			if(pos == table_mask) return 0;
+
+			for(sym = 0; sym < nsyms; sym++) if(length[sym] != 0) return 1;
+			return 0;
+		}
+
+		private void ReadLengths(byte[] lens, uint first, uint last, BitBuffer bitbuf)
+		{
+			uint x, y;
 			int z;
 
-			// hufftbl pointer here?
-
-			for (x = 0; x < 20; x++) {
-				y = buffer.ReadBits(4);
-				preTree.Length[x] = (byte)y;
+			for(x = 0; x < 20; x++) {
+				y = bitbuf.ReadBits(4);
+				m_state.PRETREE_len[x] = (byte)y;
 			}
-			preTree.MakeDecodeTable();
-			// MakeDecodeTable(LzxConstants.PRETREE_MAXSYMBOLS, LzxConstants.PRETREE_TABLEBITS,
-			// m_state.PRETREE_len, m_state.PRETREE_table);
+			MakeDecodeTable(LzxConstants.PRETREE_MAXSYMBOLS, LzxConstants.PRETREE_TABLEBITS,
+			                m_state.PRETREE_len, m_state.PRETREE_table);
 
-			for (x = first; x < last;) {
-				z = preTree.ReadHuffSym(buffer);
-				if (z == 17) {
-					y = buffer.ReadBits(4);
-					y += 4;
-					while (y-- != 0)
-						lens[x++] = 0;
-				}
-				else if (z == 18) {
-					y = buffer.ReadBits(5);
-					y += 20;
-					while (y-- != 0)
-						lens[x++] = 0;
-				}
-				else if (z == 19) {
-					y = buffer.ReadBits(1);
-					y += 4;
-					z = preTree.ReadHuffSym(buffer);
-					z = lens[x] - z;
-					if (z < 0)
-						z += 17;
-					while (y-- != 0)
-						lens[x++] = (byte)z;
-				}
-				else {
-					z = lens[x] - z;
-					if (z < 0)
-						z += 17;
+			for(x = first; x < last;) {
+				z = (int)ReadHuffSym(m_state.PRETREE_table, m_state.PRETREE_len,
+				                LzxConstants.PRETREE_MAXSYMBOLS, LzxConstants.PRETREE_TABLEBITS, bitbuf);
+				if(z == 17) {
+					y = bitbuf.ReadBits(4); y += 4;
+					while(y-- != 0) lens[x++] = 0;
+				} else if(z == 18) {
+					y = bitbuf.ReadBits(5); y += 20;
+					while(y-- != 0) lens[x++] = 0;
+				} else if(z == 19) {
+					y = bitbuf.ReadBits(1); y += 4;
+					z = (int)ReadHuffSym(m_state.PRETREE_table, m_state.PRETREE_len,
+				                LzxConstants.PRETREE_MAXSYMBOLS, LzxConstants.PRETREE_TABLEBITS, bitbuf);
+					z = lens[x] - z; if(z < 0) z += 17;
+					while(y-- != 0) lens[x++] = (byte)z;
+				} else {
+					z = lens[x] - z; if(z < 0) z += 17;
 					lens[x++] = (byte)z;
 				}
 			}
 		}
+
+		private uint ReadHuffSym(ushort[] table, byte[] lengths, uint nsyms, uint nbits, BitBuffer bitbuf)
+		{
+			uint i, j;
+			bitbuf.EnsureBits(16);
+			if((i = table[bitbuf.PeekBits((byte)nbits)]) >= nsyms) {
+				j = (uint)(1 << (int)((sizeof(uint)*8) - nbits));
+				do {
+					j >>= 1; i <<= 1; i |= (bitbuf.GetBuffer() & j) != 0 ? (uint)1 : 0;
+					if(j == 0) return 0;
+				} while((i = table[i]) >= nsyms);
+			}
+			j = lengths[i];
+			bitbuf.RemoveBits((byte)j);
+
+			return i;
+		}
+
+		#region BitBuffer
+		private class BitBuffer {
+			uint buffer;
+			byte bitsleft;
+			Stream byteStream;
+
+			public BitBuffer(Stream stream) {
+				byteStream = stream;
+				InitBitStream();
+			}
+
+			public void InitBitStream() {
+				buffer = 0;
+				bitsleft = 0;
+			}
+
+			public void EnsureBits(byte bits) {
+				while(bitsleft < bits) {
+					int lo = (byte)byteStream.ReadByte();
+					int hi = (byte)byteStream.ReadByte();
+					buffer |= (uint)(((hi << 8) | lo) << (sizeof(uint)*8 - 16 - bitsleft));
+					bitsleft += 16;
+				}
+			}
+
+			public uint PeekBits(byte bits) {
+				return (buffer >> ((sizeof(uint)*8) - bits));
+			}
+
+			public void RemoveBits(byte bits) {
+				buffer <<= bits;
+				bitsleft -= bits;
+			}
+
+			public uint ReadBits(byte bits) {
+				uint ret = 0;
+
+				if(bits > 0) {
+					EnsureBits(bits);
+					ret = PeekBits(bits);
+					RemoveBits(bits);
+				}
+
+				return ret;
+			}
+
+			public uint GetBuffer() {
+				return buffer;
+			}
+
+			public byte GetBitsLeft() {
+				return bitsleft;
+			}
+		}
+		#endregion
+
+		struct LzxState {
+			public uint						R0, R1, R2;
+			public ushort					main_elements;
+			public int						header_read;
+			public LzxConstants.BLOCKTYPE	block_type;
+			public uint						block_length;
+			public uint						block_remaining;
+			public uint						frames_read;
+			public int						intel_filesize;
+			public int						intel_curpos;
+			public int						intel_started;
+
+			public ushort[]		PRETREE_table;
+			public byte[]		PRETREE_len;
+			public ushort[]		MAINTREE_table;
+			public byte[]		MAINTREE_len;
+			public ushort[]		LENGTH_table;
+			public byte[]		LENGTH_len;
+			public ushort[]		ALIGNED_table;
+			public byte[]		ALIGNED_len;
+
+			public uint		actual_size;
+			public byte[]	window;
+			public uint		window_size;
+			public uint		window_posn;
+		}
+	}
+
+	/* CONSTANTS */
+	struct LzxConstants {
+		public const ushort MIN_MATCH =				2;
+		public const ushort MAX_MATCH =				257;
+		public const ushort NUM_CHARS =				256;
+		public enum BLOCKTYPE {
+			INVALID = 0,
+			VERBATIM = 1,
+			ALIGNED = 2,
+			UNCOMPRESSED = 3
+		}
+		public const ushort PRETREE_NUM_ELEMENTS =	20;
+		public const ushort ALIGNED_NUM_ELEMENTS =	8;
+		public const ushort NUM_PRIMARY_LENGTHS =	7;
+		public const ushort NUM_SECONDARY_LENGTHS =	249;
+
+		public const ushort PRETREE_MAXSYMBOLS = 	PRETREE_NUM_ELEMENTS;
+		public const ushort PRETREE_TABLEBITS =		6;
+		public const ushort MAINTREE_MAXSYMBOLS = 	NUM_CHARS + 50*8;
+		public const ushort MAINTREE_TABLEBITS = 	12;
+		public const ushort LENGTH_MAXSYMBOLS = 	NUM_SECONDARY_LENGTHS + 1;
+		public const ushort LENGTH_TABLEBITS =		12;
+		public const ushort ALIGNED_MAXSYMBOLS = 	ALIGNED_NUM_ELEMENTS;
+		public const ushort ALIGNED_TABLEBITS = 	7;
+
+		public const ushort LENTABLE_SAFETY =		64;
+	}
+
+	/* EXCEPTIONS */
+	class UnsupportedWindowSizeRange : Exception
+	{
 	}
 }

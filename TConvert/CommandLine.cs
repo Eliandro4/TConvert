@@ -127,7 +127,7 @@ namespace TConvert {
 		/**<summary>True if the progress window auto-closes.</summary>*/
 		private static bool autoClose = Settings.Default.AutoCloseCmdProgress;
 		/**<summary>True if images are compressed.</summary>*/
-		private static bool compress = Settings.Default.CompressImages && XCompress.IsAvailable;
+		private static bool compress = Settings.Default.CompressImages;
 		/**<summary>True if alpha is premultiplied.</summary>*/
 		private static bool premultiply = Settings.Default.PremultiplyAlpha;
 		/**<summary>True if a sound is played upon completion.</summary>*/

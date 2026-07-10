@@ -8,14 +8,15 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Shell;
-using System.Windows.Threading;
 using System.Xml;
 using TConvert.Convert;
 using TConvert.Extract;
 using TConvert.Util;
 #if !(CONSOLE)
+using System.Media;
+using System.Windows;
+using System.Windows.Shell;
+using System.Windows.Threading;
 using TConvert.Windows;
 #endif
 
@@ -655,7 +656,7 @@ namespace TConvert {
 				}
 				if ((ext == ".png" || ext == ".bmp" || ext == ".jpg") && includeImages) {
 					Helpers.CreateDirectorySafe(Path.GetDirectoryName(outputFile));
-					if (PngConverter.Convert(inputFile, outputFile, true, compressImages, true, premultiplyAlpha))
+					if (PngConverter.Convert(inputFile, outputFile, true, true, premultiplyAlpha))
 						converted = true;
 				}
 				else if (IsAudioExtension(ext) && includeSounds) {
@@ -700,7 +701,7 @@ namespace TConvert {
 				}
 				if (ext == ".png" || ext == ".bmp" || ext == ".jpg") {
 					Helpers.CreateDirectorySafe(Path.GetDirectoryName(outputFile));
-					if (PngConverter.Convert(inputFile, outputFile, true, compress, true, premultiplyAlpha))
+					if (PngConverter.Convert(inputFile, outputFile, true, true, premultiplyAlpha))
 						converted = true;
 				}
 				else if (IsAudioExtension(ext)) {

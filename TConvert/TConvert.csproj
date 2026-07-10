@@ -146,20 +146,17 @@
     <Compile Include="CommandLine.cs" />
     <Compile Include="Config.cs" />
     <Compile Include="ErrorLogger.cs" />
+    <Compile Include="Extract\ADPCMConverter.cs" />
     <Compile Include="Extract\DtxUtil.cs" />
+    <Compile Include="Extract\FFmpeg.cs" />
+    <Compile Include="Extract\LzxDecoder.cs" />
+    <Compile Include="Extract\XactExtractor.cs" />
+    <Compile Include="Extract\XnbExtractor.cs" />
     <Compile Include="Processing.cs" />
     <Compile Include="Startup.cs" />
     <Compile Include="Util\TerrariaLocator.cs" />
     <Compile Include="Convert\PngConverter.cs" />
     <Compile Include="Convert\WavConverter.cs" />
-    <Compile Include="Convert\XCompress.cs" />
-    <Compile Include="Extract\ADPCMConverter.cs" />
-    <Compile Include="Extract\FFmpeg.cs" />
-    <Compile Include="Extract\XactExtractor.cs" />
-    <Compile Include="Extract\HuffTable.cs" />
-    <Compile Include="Extract\LzxBuffer.cs" />
-    <Compile Include="Extract\LzxDecoder.cs" />
-    <Compile Include="Extract\XnbExtractor.cs" />
     <Compile Include="Util\EmbeddedResources.cs" />
     <Compile Include="Util\Helpers.cs" />
     <Compile Include="Util\Xnb.cs" />
@@ -209,11 +206,6 @@
     <Resource Include="Resources\Icons\CloseProgress.png" />
     <Resource Include="Resources\Icons\CloseDropProgress.png" />
     <Resource Include="Resources\Icons\CloseCmdProgress.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\xcompress32.dll" />
-  </ItemGroup>
-  <ItemGroup>
     <Resource Include="Resources\Icons\Compression.png" />
   </ItemGroup>
   <ItemGroup>

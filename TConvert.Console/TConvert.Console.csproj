@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>TConvert</RootNamespace>
+    <AssemblyName>TConvert</AssemblyName>
+    <AssemblyTitle>TConvert</AssemblyTitle>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <DefineConstants>$(DefineConstants);CONSOLE</DefineConstants>
+    <AssemblyDescription>TConvert (Console Ver) - A combination tool for Terraria content resources.</AssemblyDescription>
+    <AssemblyVersion>1.0.2.1</AssemblyVersion>
+    <FileVersion>1.0.2.1</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="13.6.0" />
+  </ItemGroup>
+
+  <!-- Shared source files (linked from the original Windows project) -->
+  <ItemGroup>
+    <Compile Include="..\TConvert\CommandLine.cs" Link="CommandLine.cs" />
+    <Compile Include="..\TConvert\Config.cs" Link="Config.cs" />
+    <Compile Include="..\TConvert\ErrorLogger.cs" Link="ErrorLogger.cs" />
+    <Compile Include="..\TConvert\Processing.cs" Link="Processing.cs" />
+    <Compile Include="..\TConvert\Startup.cs" Link="Startup.cs" />
+    <Compile Include="..\TConvert\Properties\AssemblyInfo.cs" Link="Properties\AssemblyInfo.cs" />
+
+    <Compile Include="..\TConvert\Convert\PngConverter.cs" Link="Convert\PngConverter.cs" />
+    <Compile Include="..\TConvert\Convert\WavConverter.cs" Link="Convert\WavConverter.cs" />
+
+    <Compile Include="..\TConvert\Extract\ADPCMConverter.cs" Link="Extract\ADPCMConverter.cs" />
+    <Compile Include="..\TConvert\Extract\DtxUtil.cs" Link="Extract\DtxUtil.cs" />
+    <Compile Include="..\TConvert\Extract\FFmpeg.cs" Link="Extract\FFmpeg.cs" />
+    <Compile Include="..\TConvert\Extract\LzxDecoder.cs" Link="Extract\LzxDecoder.cs" />
+    <Compile Include="..\TConvert\Extract\XactExtractor.cs" Link="Extract\XactExtractor.cs" />
+    <Compile Include="..\TConvert\Extract\XnbExtractor.cs" Link="Extract\XnbExtractor.cs" />
+
+    <Compile Include="..\TConvert\Util\EmbeddedResources.cs" Link="Util\EmbeddedResources.cs" />
+    <Compile Include="..\TConvert\Util\Helpers.cs" Link="Util\Helpers.cs" />
+    <Compile Include="..\TConvert\Util\TerrariaLocator.cs" Link="Util\TerrariaLocator.cs" />
+    <Compile Include="..\TConvert\Util\Xnb.cs" Link="Util\Xnb.cs" />
+
+    <!-- Console-only replacements for the designer-generated (Windows-only) types -->
+    <Compile Include="Settings.cs" />
+    <Compile Include="Resources.cs" />
+  </ItemGroup>
+
+</Project>

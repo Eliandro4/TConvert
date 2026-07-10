@@ -181,7 +181,7 @@ namespace TConvert {
 			AutoCloseProgress = Settings.Default.AutoCloseProgress;
 			AutoCloseDropProgress = Settings.Default.AutoCloseDropProgress;
 			AutoCloseCmdProgress = Settings.Default.AutoCloseCmdProgress;
-			CompressImages = Settings.Default.CompressImages && XCompress.IsAvailable;
+			CompressImages = Settings.Default.CompressImages;
 			CompletionSound = Settings.Default.CompletionSound;
 			PremultiplyAlpha = Settings.Default.PremultiplyAlpha;
 

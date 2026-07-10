@@ -12,12 +12,22 @@ namespace TConvert.Util {
 		/**<summary>Gets the output path relative to the input path.</summary>*/
 		public static string GetOutputPath(string inputPath, string inputDirectory, string outputDirectory) {
 			string fullPath = Path.GetFullPath(inputPath);
-			return Path.Combine(outputDirectory, fullPath.Substring(Math.Min(fullPath.Length, inputDirectory.Length + 1)));
+			string fullInputDir = Path.GetFullPath(inputDirectory);
+			int offset = fullInputDir.Length;
+			if (offset > 0 && fullPath.Length > offset && (fullPath[offset] == '/' || fullPath[offset] == '\\')) {
+				offset++;
+			}
+			return Path.Combine(outputDirectory, fullPath.Substring(offset));
 		}
 		/**<summary>Gets the relative path based on the input directory.</summary>*/
 		public static string GetRelativePath(string path, string inputDirectory) {
 			string fullPath = Path.GetFullPath(path);
-			return fullPath.Substring(Math.Min(fullPath.Length, inputDirectory.Length + 1));
+			string fullInputDir = Path.GetFullPath(inputDirectory);
+			int offset = fullInputDir.Length;
+			if (offset > 0 && fullPath.Length > offset && (fullPath[offset] == '/' || fullPath[offset] == '\\')) {
+				offset++;
+			}
+			return fullPath.Substring(offset);
 		}
 		/**<summary>Gets the output paths relative to the input path.</summary>*/
 		public static string[] GetOutputFiles(string[] inputFiles, string inputDirectory, string outputDirectory) {

@@ -16,15 +16,14 @@
  ******************************************************************************/
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows.Media.Imaging;
 using TConvert.Util;
+
+using ImageMagick;
 
 namespace TConvert.Convert {
 	/**<summary>A Png to Xnb Converter.</summary>*/
@@ -53,40 +52,47 @@ namespace TConvert.Convert {
 		#region Converting
 
 		/**<summary>Converts the specified input file and writes it to the output file.</summary>*/
-		public static bool Convert(string inputFile, string outputFile, bool changeExtension, bool compressed, bool reach, bool premultiply) {
+		public static bool Convert(string inputFile, string outputFile, bool changeExtension, bool reach, bool premultiply) {
 			if (changeExtension) {
 				outputFile = Path.ChangeExtension(outputFile, ".xnb");
 			}
 
-			// Throw more helpful exceptions than what Bitmap.ctor() throws.
 			if (!Directory.Exists(Path.GetDirectoryName(inputFile)))
 				throw new DirectoryNotFoundException("Could not find a part of the path '" + inputFile + "'.");
 			else if (!File.Exists(inputFile))
 				throw new FileNotFoundException("Could not find file '" + inputFile + "'.");
 
-			using (Bitmap bmp = new Bitmap(inputFile)) {
-				using (FileStream stream = new FileStream(outputFile, FileMode.OpenOrCreate, FileAccess.Write)) {
-					using (BinaryWriter writer = new BinaryWriter(stream)) {
-						stream.SetLength(0);
-						writer.Write(Encoding.UTF8.GetBytes("XNB"));    // format-identifier
-						writer.Write(Encoding.UTF8.GetBytes("w"));      // target-platform
-						writer.Write((byte)5);                          // xnb-format-version
-						byte flagBits = 0;
-						if (!reach) {
-							flagBits |= 0x01;
-						}
-						if (compressed) {
-							flagBits |= 0x80;
-						}
-						writer.Write(flagBits); // flag-bits; 00=reach, 01=hiprofile, 80=compressed, 00=uncompressed
-						if (compressed) {
-							WriteCompressedData(writer, bmp, premultiply);
-						}
-						else {
-							writer.Write(MetadataSize + bmp.Width * bmp.Height * 4); // compressed file size
-							WriteData(bmp, writer, premultiply);
-						}
-					}
+			int width;
+			int height;
+			byte[] rgba;
+
+		using (MagickImage image = new MagickImage(inputFile)) {
+				width = (int)image.Width;
+				height = (int)image.Height;
+				image.Format = MagickFormat.Rgba;
+				rgba = image.ToByteArray(MagickFormat.Rgba);
+			}
+			// Magick returns RGBA; convert to the BGRA layout the GDI+ path uses
+			// so WriteData's channel swap yields canonical RGBA XNB pixels.
+			for (int i = 0; i < rgba.Length; i += 4) {
+				byte b = rgba[i];
+				rgba[i] = rgba[i + 2];
+				rgba[i + 2] = b;
+			}
+
+			using (FileStream stream = new FileStream(outputFile, FileMode.OpenOrCreate, FileAccess.Write)) {
+				using (BinaryWriter writer = new BinaryWriter(stream)) {
+					stream.SetLength(0);
+				writer.Write(Encoding.UTF8.GetBytes("XNB"));    // format-identifier
+				writer.Write(Encoding.UTF8.GetBytes("w"));      // target-platform
+				writer.Write((byte)5);                          // xnb-format-version
+				byte flagBits = 0;
+				if (!reach) {
+					flagBits |= 0x01;
+				}
+				writer.Write(flagBits);
+				writer.Write(MetadataSize + width * height * 4);
+				WriteData(writer, rgba, width, height, premultiply);
 				}
 			}
 			return true;
@@ -96,22 +102,8 @@ namespace TConvert.Convert {
 		//=========== WRITING ============
 		#region Writing
 
-		/**<summary>Write compressed image data.</summary>*/
-		private static void WriteCompressedData(BinaryWriter writer, Bitmap png, bool premultiply) {
-			using (MemoryStream stream = new MemoryStream()) {
-				byte[] uncompressedData;
-				using (BinaryWriter writer2 = new BinaryWriter(stream)) {
-					WriteData(png, writer2, premultiply);
-					uncompressedData = stream.ToArray();
-				}
-				byte[] compressedData = XCompress.Compress(uncompressedData);
-				writer.Write(6 + 4 + 4 + compressedData.Length); // compressed file size including headers
-				writer.Write(uncompressedData.Length); // uncompressed data size (exluding headers! only the data)
-				writer.Write(compressedData);
-			}
-		}
 		/**<summary>Write uncompressed image data.</summary>*/
-		private static void WriteData(Bitmap bmp, BinaryWriter writer, bool premultiply) {
+		private static void WriteData(BinaryWriter writer, byte[] rgba, int width, int height, bool premultiply) {
 			writer.Write7BitEncodedInt(1);                 // type-reader-count
 			writer.Write7BitEncodedString(Texture2DType);  // type-reader-name
 			writer.Write((int)0);                          // reader version number
@@ -120,49 +112,35 @@ namespace TConvert.Convert {
 			// writing the image pixel data
 			writer.Write((byte)1);
 			writer.Write((int)0);
-			writer.Write(bmp.Width);
-			writer.Write(bmp.Height);
+			writer.Write(width);
+			writer.Write(height);
 			writer.Write((int)1);
-			writer.Write(bmp.Width * bmp.Height * 4);
-			if (bmp.PixelFormat != PixelFormat.Format32bppArgb) {
-				Bitmap newBmp = new Bitmap(bmp);
-				bmp = newBmp.Clone(new Rectangle(0, 0, newBmp.Width, newBmp.Height), PixelFormat.Format32bppArgb);
-			}
-			BitmapData bitmapData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
-			try {
-				int length = bitmapData.Stride * bitmapData.Height;
-				byte[] bytes = new byte[length];
-				Marshal.Copy(bitmapData.Scan0, bytes, 0, length);
-				for (int i = 0; i < bytes.Length; i += 4) {
-					// Always swap red and blue channels premultiply alpha if requested
-					int a = bytes[i + 3];
-					if (!premultiply || a == 255) {
-						// No premultiply necessary
-						byte b = bytes[i];
-						bytes[i] = bytes[i + 2];
-						bytes[i + 2] = b;
-					}
-					else if (a != 0) {
-						byte b = bytes[i];
-						bytes[i] = (byte) (bytes[i + 2] * a / 255);
-						bytes[i + 1] = (byte) (bytes[i + 1] * a / 255);
-						bytes[i + 2] = (byte) (b * a / 255);
-					}
-					else {
-						// alpha is zero, so just zero everything
-						bytes[i] = 0;
-						bytes[i + 1] = 0;
-						bytes[i + 2] = 0;
-					}
+			writer.Write(width * height * 4);
+
+			// rgba is in RGBA order; swap/premultiply channels in place.
+			for (int i = 0; i < rgba.Length; i += 4) {
+				// Always swap red and blue channels; premultiply alpha if requested
+				int a = rgba[i + 3];
+				if (!premultiply || a == 255) {
+					// No premultiply necessary
+					byte b = rgba[i];
+					rgba[i] = rgba[i + 2];
+					rgba[i + 2] = b;
 				}
-				writer.Write(bytes);
+				else if (a != 0) {
+					byte b = rgba[i];
+					rgba[i] = (byte) (rgba[i + 2] * a / 255);
+					rgba[i + 1] = (byte) (rgba[i + 1] * a / 255);
+					rgba[i + 2] = (byte) (b * a / 255);
+				}
+				else {
+					// alpha is zero, so just zero everything
+					rgba[i] = 0;
+					rgba[i + 1] = 0;
+					rgba[i + 2] = 0;
+				}
 			}
-			catch (Exception ex) {
-				throw ex;
-			}
-			finally {
-				bmp.UnlockBits(bitmapData);
-			}
+			writer.Write(rgba);
 		}
 
 		#endregion

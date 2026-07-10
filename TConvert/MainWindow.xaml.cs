@@ -142,7 +142,7 @@ namespace TConvert {
 
 			tabControl.SelectedIndex = (int)Config.CurrentTab;
 
-			menuItemCompressImages.IsEnabled = XCompress.IsAvailable;
+			menuItemCompressImages.IsEnabled = true;
 			menuItemCompressImages.IsChecked = Config.CompressImages;
 			menuItemPremultiply.IsChecked = Config.PremultiplyAlpha;
 			menuItemCompletionSound.IsChecked = Config.CompletionSound;

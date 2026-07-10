@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
-using Microsoft.Win32;
 
 namespace TConvert.Util {
 	/**<summary>Finds the Terraria Content folder.</summary>*/
@@ -107,19 +106,10 @@ namespace TConvert.Util {
 
 		/**<summary>Starts looking for the Terra Launcher config path.</summary>*/
 		private static string FindConfigPath() {
-			return Registry.GetValue("HKEY_CURRENT_USER\\Software\\TriggersToolsGames\\TerraLauncher", "ConfigPath", null) as string;
+			return null;
 		}
 		/**<summary>Starts looking for the Terraria Content folder.</summary>*/
 		private static string FindTerrariaContentDirectory() {
-			try {
-				// Check the windows registry for steam installation path
-				string steamPath = Registry.GetValue("HKEY_CURRENT_USER\\Software\\Valve\\Steam", "SteamPath", null) as string;
-				string result = SeekDirectory(steamPath);
-				if (result != null) {
-					return result;
-				}
-			}
-			catch { }
 			try {
 				// Try to find relevant environment variables
 				foreach (KeyValuePair<string, string> envVar in Environment.GetEnvironmentVariables()) {

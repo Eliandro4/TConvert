@@ -46,14 +46,14 @@
  */
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using TConvert.Util;
+
+using ImageMagick;
 
 namespace TConvert.Extract {
 
@@ -74,7 +74,7 @@ namespace TConvert.Extract {
 		#region Members
 
 		/**<summary>The compression decoder.</summary>*/
-		private static LzxDecoder lzxDecoder = new LzxDecoder();
+		private static LzxDecoder lzxDecoder = new LzxDecoder(16);
 
 		#endregion
 		//========== EXTRACTING ==========
@@ -104,16 +104,16 @@ namespace TConvert.Extract {
 				int compressedSize = reader.ReadInt32();
 				int decompressedSize = (compressed ? reader.ReadInt32() : compressedSize);
 
-				if (compressed) {
-					MemoryStream decompressedStream = new MemoryStream(decompressedSize);
+			if (compressed) {
+				MemoryStream decompressedStream = new MemoryStream(decompressedSize);
 
-					lzxDecoder.Decompress(reader, compressedSize - HeaderSize, decompressedStream, decompressedSize);
+				lzxDecoder.Decompress(reader.BaseStream, compressedSize - HeaderSize, decompressedStream, decompressedSize);
 
-					decompressedStream.Position = 0;
+				decompressedStream.Position = 0;
 
-					reader.Close();
-					reader = new BinaryReader(decompressedStream);
-				}
+				reader.Close();
+				reader = new BinaryReader(decompressedStream);
+			}
 
 				int typeReaderCount = reader.Read7BitEncodedInt();
 
@@ -157,8 +157,8 @@ namespace TConvert.Extract {
 							outputFile = Path.ChangeExtension(outputFile, ".png");
 						}
 
-						Bitmap bmp = ReadTexture2D(reader);
-						bmp.Save(outputFile, ImageFormat.Png);
+						byte[] bmp = ReadTexture2D(reader, out int bmpWidth, out int bmpHeight);
+						SaveTexturePng(outputFile, bmp, bmpWidth, bmpHeight);
 						return true;
 					}
 				case "Microsoft.Xna.Framework.Content.SoundEffectReader": {
@@ -237,8 +237,8 @@ namespace TConvert.Extract {
 						"_" + i + Path.GetExtension(outputFile));
 
 							reader.Read7BitEncodedInt();
-							Bitmap bmp = ReadTexture2D(reader);
-							bmp.Save(newOutputFile, ImageFormat.Png);
+							byte[] bmp = ReadTexture2D(reader, out int bmpWidth, out int bmpHeight);
+							SaveTexturePng(newOutputFile, bmp, bmpWidth, bmpHeight);
 
 							SkipList(reader, 16); // List<Rectangle>
 							SkipList(reader, 16); // List<Rectangle>
@@ -259,8 +259,8 @@ namespace TConvert.Extract {
 						}
 
 						reader.Read7BitEncodedInt();
-						Bitmap bmp = ReadTexture2D(reader);
-						bmp.Save(outputFile, ImageFormat.Png);
+						byte[] bmp = ReadTexture2D(reader, out int bmpWidth, out int bmpHeight);
+						SaveTexturePng(outputFile, bmp, bmpWidth, bmpHeight);
 
 						// Skip the rest of the data. It's not needed.
 
@@ -276,10 +276,10 @@ namespace TConvert.Extract {
 		}
 
 		/**<summary>Reads an Xnb Texture2D.</summary>*/
-		private static Bitmap ReadTexture2D(BinaryReader reader) {
+		private static byte[] ReadTexture2D(BinaryReader reader, out int width, out int height) {
 			int surfaceFormat = reader.ReadInt32();
-			int width = reader.ReadInt32();
-			int height = reader.ReadInt32();
+			width = reader.ReadInt32();
+			height = reader.ReadInt32();
 
 			// Mip count
 			int mipCount = reader.ReadInt32();
@@ -316,20 +316,22 @@ namespace TConvert.Extract {
 				source[j * 4 + 2] = swap;
 			}
 
-			// Write to the bitmap
-			Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-			BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-			IntPtr data = bmpData.Scan0;
-			Marshal.Copy(source, 0, data, source.Length);
-			bmp.UnlockBits(bmpData);
-
 			// Skip the rest of the mips
 			for (int i = 1; i < mipCount; i++) {
 				size = reader.ReadInt32();
 				reader.BaseStream.Position += size;
 			}
 
-			return bmp;
+			return source;
+		}
+		/**<summary>Saves RGBA pixel data to a PNG file.</summary>*/
+		private static void SaveTexturePng(string outputFile, byte[] source, int width, int height) {
+		using (MagickImage image = new MagickImage()) {
+				var settings = new PixelReadSettings(width, height, StorageType.Char, PixelMapping.BGRA);
+				image.ReadPixels(new MemoryStream(source), settings);
+				image.Format = MagickFormat.Png;
+				image.Write(outputFile);
+			}
 		}
 		/**<summary>Skips an Xnb list object.</summary>*/
 		private static void SkipList(BinaryReader reader, int objSize) {

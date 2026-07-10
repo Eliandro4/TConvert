@@ -28,28 +28,11 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows;
 using TConvert.Properties;
 using TConvert.Util;
 
 namespace TConvert.Extract {
 	public static class FFmpeg {
-		//========== CONSTANTS ===========
-		#region Constants
-
-		/**<summary>The path of the temporary executable.</summary>*/
-		private static readonly string TempFFmpeg = Path.Combine(Path.GetTempPath(), "TriggersToolsGames", "ffmpeg.exe");
-
-		#endregion
-		//========= CONSTRUCTORS =========
-		#region Constructors
-
-		/**<summary>Extracts FFmpeg.</summary>*/
-		static FFmpeg() {
-			EmbeddedResources.Extract(TempFFmpeg, Resources.ffmpeg);
-		}
-
-		#endregion
 		//========== CONVERTING ==========
 		#region Converting
 
@@ -66,13 +49,36 @@ namespace TConvert.Extract {
 				"\"" + Path.GetFullPath(output) + "\"";
 
 			ProcessStartInfo start = new ProcessStartInfo();
-			start.FileName = TempFFmpeg;
+			string ffmpegPath = FindFfmpeg();
+			if (string.IsNullOrEmpty(ffmpegPath)) {
+				throw new InvalidOperationException(
+					"ffmpeg was not found. Install ffmpeg and make sure it is available in your PATH.");
+			}
+			start.FileName = ffmpegPath;
 			start.Arguments = arguments;
 			start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
 
 			Process process = Process.Start(start);
 			process.WaitForExit();
 			return (process.ExitCode == 0);
+		}
+
+		#endregion
+		//============ HELPERS ===========
+		#region Helpers
+
+		/**<summary>Locates the ffmpeg executable in the system PATH.</summary>*/
+		private static string FindFfmpeg() {
+			string fileName = (Environment.OSVersion.Platform == PlatformID.Win32NT) ? "ffmpeg.exe" : "ffmpeg";
+			string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+			foreach (string dir in pathEnv.Split(Path.PathSeparator)) {
+				if (string.IsNullOrWhiteSpace(dir))
+					continue;
+				string candidate = Path.Combine(dir, fileName);
+				if (File.Exists(candidate))
+					return candidate;
+			}
+			return null;
 		}
 
 		#endregion
