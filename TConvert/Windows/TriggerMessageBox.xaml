@@ -1,11 +1,11 @@
-﻿<Window x:Class="TConvert.Windows.TriggerMessageBox"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Loaded="OnWindowLoaded" ShowInTaskbar="False" Icon="/Resources/Icons/Empty.png" PreviewKeyDown="OnPreviewKeyDown" SizeToContent="WidthAndHeight" SnapsToDevicePixels="True" UseLayoutRounding="True">
+        x:Class="TConvert.Windows.TriggerMessageBox"
+        CanResize="False" WindowStartupLocation="CenterOwner" Loaded="OnWindowLoaded" ShowInTaskbar="False" Icon="avares://TConvert/Resources/Icons/Empty.png" KeyDown="OnPreviewKeyDown" SizeToContent="WidthAndHeight" UseLayoutRounding="True">
 
     <Grid x:Name="clientArea" Height="110" Width="400">
         <Label x:Name="labelMessage" Margin="18,27,18,0" VerticalAlignment="Top" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="0">
-            <TextBlock x:Name="textBlockMessage"  TextWrapping="WrapWithOverflow" Text="Message" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+            <TextBlock x:Name="textBlockMessage"  TextWrapping="Wrap" Text="Message" HorizontalAlignment="Left" VerticalAlignment="Top"/>
         </Label>
 
         <Rectangle Fill="#FFF0F0F0" Height="49" Margin="0" VerticalAlignment="Bottom" StrokeThickness="0"/>

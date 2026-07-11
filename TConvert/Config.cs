@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using TConvert.Convert;
-using TConvert.Properties;
 using TConvert.Util;
+using System.Text.Json;
 
 namespace TConvert {
 	/**<summary>The types of input modes for convert or extract.</summary>*/
@@ -24,6 +25,12 @@ namespace TConvert {
 	public static class Config {
 		//=========== MEMBERS ============
 		#region Members
+
+		/**<summary>The path to the JSON config file.</summary>*/
+		private static readonly string ConfigPath = Path.Combine(
+			Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+			"TConvert", "TConvert.json"
+		);
 
 		/**<summary>The specified Terraria Content folder.</summary>*/
 		public static string TerrariaContentDirectory { get; set; }
@@ -169,95 +176,146 @@ namespace TConvert {
 		//=========== LOADING ============
 		#region Loading
 
+		/**<summary>A serializable snapshot of all settings.</summary>*/
+		private class ConfigData {
+			public string TerrariaContentDirectory { get; set; } = "";
+			public string CurrentTab { get; set; } = "Extract";
+			public bool AutoCloseProgress { get; set; } = false;
+			public bool AutoCloseDropProgress { get; set; } = true;
+			public bool AutoCloseCmdProgress { get; set; } = true;
+			public bool CompressImages { get; set; } = true;
+			public bool CompletionSound { get; set; } = false;
+			public bool PremultiplyAlpha { get; set; } = true;
+
+			public string ExtractFolderInput { get; set; } = "";
+			public string ExtractFolderOutput { get; set; } = "";
+			public string ExtractFileInput { get; set; } = "";
+			public string ExtractFileOutput { get; set; } = "";
+			public string ConvertFolderInput { get; set; } = "";
+			public string ConvertFolderOutput { get; set; } = "";
+			public string ConvertFileInput { get; set; } = "";
+			public string ConvertFileOutput { get; set; } = "";
+			public string BackupFolderContent { get; set; } = "";
+			public string BackupFolderBackup { get; set; } = "";
+			public string ScriptFile { get; set; } = "";
+
+			public string ExtractMode { get; set; } = "Folder";
+			public string ConvertMode { get; set; } = "Folder";
+
+			public bool ExtractAllowImages { get; set; } = true;
+			public bool ExtractAllowSounds { get; set; } = true;
+			public bool ExtractAllowFonts { get; set; } = true;
+			public bool ExtractAllowWaveBank { get; set; } = true;
+			public bool ExtractUseInput { get; set; } = false;
+			public bool ConvertAllowImages { get; set; } = true;
+			public bool ConvertAllowSounds { get; set; } = true;
+			public bool ConvertUseInput { get; set; } = false;
+		}
+
 		/**<summary>Loads the settings.</summary>*/
 		public static void Load() {
-			TerrariaContentDirectory = Settings.Default.TerrariaContentDirectory;
+			ConfigData data = null;
+			try {
+				if (File.Exists(ConfigPath)) {
+					string json = File.ReadAllText(ConfigPath);
+					if (!string.IsNullOrWhiteSpace(json))
+						data = JsonSerializer.Deserialize<ConfigData>(json);
+				}
+			}
+			catch { }
+			if (data == null)
+				data = new ConfigData();
+
+			TerrariaContentDirectory = data.TerrariaContentDirectory;
 			if (TerrariaContentDirectory == "" && !string.IsNullOrEmpty(TerrariaLocator.TerrariaContentDirectory)) {
 				TerrariaContentDirectory = TerrariaLocator.TerrariaContentDirectory;
 			}
 			Tabs tab;
-			Enum.TryParse<Tabs>(Settings.Default.CurrentTab, out tab);
+			Enum.TryParse<Tabs>(data.CurrentTab, out tab);
 			CurrentTab = tab;
-			AutoCloseProgress = Settings.Default.AutoCloseProgress;
-			AutoCloseDropProgress = Settings.Default.AutoCloseDropProgress;
-			AutoCloseCmdProgress = Settings.Default.AutoCloseCmdProgress;
-			CompressImages = Settings.Default.CompressImages;
-			CompletionSound = Settings.Default.CompletionSound;
-			PremultiplyAlpha = Settings.Default.PremultiplyAlpha;
+			AutoCloseProgress = data.AutoCloseProgress;
+			AutoCloseDropProgress = data.AutoCloseDropProgress;
+			AutoCloseCmdProgress = data.AutoCloseCmdProgress;
+			CompressImages = data.CompressImages;
+			CompletionSound = data.CompletionSound;
+			PremultiplyAlpha = data.PremultiplyAlpha;
 
-			Extract.FolderInput = Settings.Default.ExtractFolderInput;
-			Extract.FolderOutput = Settings.Default.ExtractFolderOutput;
-			Extract.FileInput = Settings.Default.ExtractFileInput;
-			Extract.FileOutput = Settings.Default.ExtractFileOutput;
+			Extract.FolderInput = data.ExtractFolderInput;
+			Extract.FolderOutput = data.ExtractFolderOutput;
+			Extract.FileInput = data.ExtractFileInput;
+			Extract.FileOutput = data.ExtractFileOutput;
 
-			Convert.FolderInput = Settings.Default.ConvertFolderInput;
-			Convert.FolderOutput = Settings.Default.ConvertFolderOutput;
-			Convert.FileInput = Settings.Default.ConvertFileInput;
-			Convert.FileOutput = Settings.Default.ConvertFileOutput;
+			Convert.FolderInput = data.ConvertFolderInput;
+			Convert.FolderOutput = data.ConvertFolderOutput;
+			Convert.FileInput = data.ConvertFileInput;
+			Convert.FileOutput = data.ConvertFileOutput;
 
-			Backup.FolderContent = Settings.Default.BackupFolderContent;
-			Backup.FolderBackup = Settings.Default.BackupFolderBackup;
+			Backup.FolderContent = data.BackupFolderContent;
+			Backup.FolderBackup = data.BackupFolderBackup;
 
-			Script.File = Settings.Default.ScriptFile;
+			Script.File = data.ScriptFile;
 
 			InputModes mode;
-			Enum.TryParse<InputModes>(Settings.Default.ExtractMode, out mode);
+			Enum.TryParse<InputModes>(data.ExtractMode, out mode);
 			Extract.Mode = mode;
-			
-			Enum.TryParse<InputModes>(Settings.Default.ConvertMode, out mode);
+
+			Enum.TryParse<InputModes>(data.ConvertMode, out mode);
 			Convert.Mode = mode;
-			
-			Extract.AllowImages = Settings.Default.ExtractAllowImages;
-			Extract.AllowSounds = Settings.Default.ExtractAllowSounds;
-			Extract.AllowFonts = Settings.Default.ExtractAllowFonts;
-			Extract.AllowWaveBank = Settings.Default.ExtractAllowWaveBank;
-			Extract.UseInput = Settings.Default.ExtractUseInput;
 
-			Convert.AllowImages = Settings.Default.ConvertAllowImages;
-			Convert.AllowSounds = Settings.Default.ConvertAllowSounds;
-			Convert.UseInput = Settings.Default.ConvertUseInput;
+			Extract.AllowImages = data.ExtractAllowImages;
+			Extract.AllowSounds = data.ExtractAllowSounds;
+			Extract.AllowFonts = data.ExtractAllowFonts;
+			Extract.AllowWaveBank = data.ExtractAllowWaveBank;
+			Extract.UseInput = data.ExtractUseInput;
 
+			Convert.AllowImages = data.ConvertAllowImages;
+			Convert.AllowSounds = data.ConvertAllowSounds;
+			Convert.UseInput = data.ConvertUseInput;
 		}
 		/**<summary>Saves the settings.</summary>*/
 		public static void Save() {
-			Settings.Default.TerrariaContentDirectory = TerrariaContentDirectory;
-			Settings.Default.CurrentTab = CurrentTab.ToString();
-			Settings.Default.AutoCloseProgress = AutoCloseProgress;
-			Settings.Default.AutoCloseDropProgress = AutoCloseDropProgress;
-			Settings.Default.AutoCloseCmdProgress = AutoCloseCmdProgress;
-			Settings.Default.CompressImages = CompressImages;
-			Settings.Default.CompletionSound = CompletionSound;
-			Settings.Default.PremultiplyAlpha = PremultiplyAlpha;
+			ConfigData data = new ConfigData {
+				TerrariaContentDirectory = TerrariaContentDirectory,
+				CurrentTab = CurrentTab.ToString(),
+				AutoCloseProgress = AutoCloseProgress,
+				AutoCloseDropProgress = AutoCloseDropProgress,
+				AutoCloseCmdProgress = AutoCloseCmdProgress,
+				CompressImages = CompressImages,
+				CompletionSound = CompletionSound,
+				PremultiplyAlpha = PremultiplyAlpha,
 
-			Settings.Default.ExtractFolderInput = Extract.FolderInput;
-			Settings.Default.ExtractFolderOutput = Extract.FolderOutput;
-			Settings.Default.ExtractFileInput = Extract.FileInput;
-			Settings.Default.ExtractFileOutput = Extract.FileOutput;
+				ExtractFolderInput = Extract.FolderInput,
+				ExtractFolderOutput = Extract.FolderOutput,
+				ExtractFileInput = Extract.FileInput,
+				ExtractFileOutput = Extract.FileOutput,
+				ConvertFolderInput = Convert.FolderInput,
+				ConvertFolderOutput = Convert.FolderOutput,
+				ConvertFileInput = Convert.FileInput,
+				ConvertFileOutput = Convert.FileOutput,
+				BackupFolderContent = Backup.FolderContent,
+				BackupFolderBackup = Backup.FolderBackup,
+				ScriptFile = Script.File,
 
-			Settings.Default.ConvertFolderInput = Convert.FolderInput;
-			Settings.Default.ConvertFolderOutput = Convert.FolderOutput;
-			Settings.Default.ConvertFileInput = Convert.FileInput;
-			Settings.Default.ConvertFileOutput = Convert.FileOutput;
+				ExtractMode = Extract.Mode.ToString(),
+				ConvertMode = Convert.Mode.ToString(),
 
-			Settings.Default.BackupFolderContent = Backup.FolderContent;
-			Settings.Default.BackupFolderBackup = Backup.FolderBackup;
-
-			Settings.Default.ScriptFile = Script.File;
-
-			Settings.Default.ExtractMode = Extract.Mode.ToString();
-			Settings.Default.ConvertMode = Convert.Mode.ToString();
-
-			Settings.Default.ExtractAllowImages = Extract.AllowImages;
-			Settings.Default.ExtractAllowSounds = Extract.AllowSounds;
-			Settings.Default.ExtractAllowFonts = Extract.AllowFonts;
-			Settings.Default.ExtractAllowWaveBank = Extract.AllowWaveBank;
-			Settings.Default.ExtractUseInput = Extract.UseInput;
-
-			Settings.Default.ConvertAllowImages = Convert.AllowImages;
-			Settings.Default.ConvertAllowSounds = Convert.AllowSounds;
-			Settings.Default.ConvertUseInput = Convert.UseInput;
-
-			Settings.Default.Save();
+				ExtractAllowImages = Extract.AllowImages,
+				ExtractAllowSounds = Extract.AllowSounds,
+				ExtractAllowFonts = Extract.AllowFonts,
+				ExtractAllowWaveBank = Extract.AllowWaveBank,
+				ExtractUseInput = Extract.UseInput,
+				ConvertAllowImages = Convert.AllowImages,
+				ConvertAllowSounds = Convert.AllowSounds,
+				ConvertUseInput = Convert.UseInput,
+			};
+			try {
+				string dir = Path.GetDirectoryName(ConfigPath);
+				if (!Directory.Exists(dir))
+					Directory.CreateDirectory(dir);
+				File.WriteAllText(ConfigPath, JsonSerializer.Serialize(data,
+					new JsonSerializerOptions { WriteIndented = true }));
+			}
+			catch { }
 		}
 
 		#endregion

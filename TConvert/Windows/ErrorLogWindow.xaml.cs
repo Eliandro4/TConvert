@@ -4,15 +4,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using System.Windows.Shell;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Media;
+using Avalonia.Interactivity;
+using TConvert.Util;
 
 namespace TConvert.Windows {
 	/**<summary>The log window for showing errors that occurred during file processing.</summary>*/
@@ -75,7 +72,10 @@ namespace TConvert.Windows {
 		#region Events
 
 		private void OnOpenLogFile(object sender, RoutedEventArgs e) {
-			Process.Start(ErrorLogger.LogPath);
+			try {
+				Process.Start(new ProcessStartInfo { FileName = ErrorLogger.LogPath, UseShellExecute = true });
+			}
+			catch { }
 		}
 
 		#endregion
@@ -84,11 +84,7 @@ namespace TConvert.Windows {
 
 		public static void Show(Window owner, LogError[] errors) {
 			ErrorLogWindow window = new ErrorLogWindow(errors);
-			if (owner == null || owner.Visibility != Visibility.Visible)
-				window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-			else
-				window.Owner = owner;
-			window.ShowDialog();
+			window.ShowDialog(owner);
 		}
 
 		#endregion

@@ -1,20 +1,15 @@
-﻿<Window x:Class="TConvert.Windows.ErrorMessageBox"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Title="Unhandled Exception" Icon="/Resources/Icons/AppError.ico" SnapsToDevicePixels="True" UseLayoutRounding="True" SizeToContent="WidthAndHeight" PreviewKeyDown="OnPreviewKeyDown" Closing="OnWindowClosing">
+        x:Class="TConvert.Windows.ErrorMessageBox"
+        CanResize="False" WindowStartupLocation="CenterOwner" Title="Unhandled Exception" Icon="avares://TConvert/Resources/Icons/AppError.ico" UseLayoutRounding="True" SizeToContent="WidthAndHeight" KeyDown="OnPreviewKeyDown" Closing="OnWindowClosing">
 
     <Grid x:Name="clientArea" Width="504" Height="230">
         <Label Margin="18,15,18,0" VerticalAlignment="Top" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="0">
-            <TextBlock  TextWrapping="WrapWithOverflow" Text="Unhandled Exception in TConvert!" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FF952727" FontWeight="Bold"/>
-        </Label>
-        <Label HorizontalAlignment="Right" Margin="0,10,18,0" VerticalAlignment="Top" FontWeight="Bold">
-            <Hyperlink NavigateUri="https://github.com/trigger-death/TConvert" RequestNavigate="OnRequestNavigate" Focusable="False">
-                <Run Text="Github Page"/>
-            </Hyperlink>
+            <TextBlock  TextWrapping="Wrap" Text="Unhandled Exception in TConvert!" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="#FF952727" FontWeight="Bold"/>
         </Label>
 
-        <Border Margin="18,43,18,54" BorderThickness="1" BorderBrush="#FF828790" Grid.ColumnSpan="2">
-            <ScrollViewer x:Name="scrollViewer" Background="#FFFBFBFB" Padding="4,1" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Auto">
+        <Border Margin="18,43,18,54" BorderThickness="1" BorderBrush="#FF828790">
+            <ScrollViewer x:Name="scrollViewer" Background="#FFFBFBFB" Padding="4,1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                 <TextBlock x:Name="textBlockMessage" Text="Exception:" HorizontalAlignment="Left" VerticalAlignment="Top" SizeChanged="OnMessageSizeChanged"/>
             </ScrollViewer>
         </Border>

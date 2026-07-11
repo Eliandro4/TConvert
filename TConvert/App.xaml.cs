@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using TConvert.Extract;
 using TConvert.Windows;
 
@@ -26,46 +25,45 @@ namespace TConvert {
 		//========= CONSTRUCTORS =========
 		#region Constructors
 
-		/**<summary>Constructs the app and sets up embedded assembly resolving.</summary>*/
+		/**<summary>Constructs the app and sets up exception handling.</summary>*/
 		public App() {
-			AppDomain.CurrentDomain.AssemblyResolve += OnResolveAssemblies;
+			// Catch exceptions not in a UI thread
+			AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(OnAppDomainUnhandledException);
+			TaskScheduler.UnobservedTaskException += OnTaskSchedulerUnobservedTaskException;
+			Dispatcher.UIThread.UnhandledException += OnAppUnhandledException;
+		}
+
+		#endregion
+		//========== LIFECYCLE ===========
+		#region Lifecycle
+
+		/**<summary>Initializes the application (loads the XAML).</summary>*/
+		public override void Initialize() {
+			AvaloniaXamlLoader.Load(this);
+		}
+		/**<summary>Called once the application framework is initialized.</summary>*/
+		public override void OnFrameworkInitializationCompleted() {
+			string[] args = Environment.GetCommandLineArgs().Skip(1).ToArray();
+			if (args.Length > 0) {
+				// Only reach here from CommandLine starting up the app to use the progress window.
+				CommandLine.ParseCommand(args);
+			}
+			else {
+				MainWindow mainWindow = new MainWindow();
+				Processing.MainWindow = mainWindow;
+				mainWindow.Show();
+			}
+			base.OnFrameworkInitializationCompleted();
 		}
 
 		#endregion
 		//============ EVENTS ============
 		#region Events
 
-		private Assembly OnResolveAssemblies(object sender, ResolveEventArgs args) {
-			var executingAssembly = Assembly.GetExecutingAssembly();
-			var assemblyName = new AssemblyName(args.Name);
-
-			string path = assemblyName.Name + ".dll";
-			if (assemblyName.CultureInfo.Equals(CultureInfo.InvariantCulture) == false) {
-				path = string.Format(@"{0}\{1}", assemblyName.CultureInfo, path);
-			}
-
-			using (Stream stream = executingAssembly.GetManifestResourceStream(path)) {
-				if (stream == null)
-					return null;
-
-				byte[] assemblyRawBytes = new byte[stream.Length];
-				stream.Read(assemblyRawBytes, 0, assemblyRawBytes.Length);
-				return Assembly.Load(assemblyRawBytes);
-			}
-		}
-		private void OnAppStartup(object sender, StartupEventArgs e) {
-			// Catch exceptions not in a UI thread
-			AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(OnAppDomainUnhandledException);
-			TaskScheduler.UnobservedTaskException += OnTaskSchedulerUnobservedTaskException;
-			if (e.Args.Length > 0) {
-				// Only reach here from CommandLine starting up the app to use the progress window.
-				CommandLine.ProcessFiles();
-			}
-		}
-		private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e) {
+		private async void OnAppUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e) {
 			if (e.Exception != lastException) {
 				lastException = e.Exception;
-				if (ErrorMessageBox.Show(e.Exception))
+				if (await ErrorMessageBox.Show(e.Exception))
 					Environment.Exit(0);
 				e.Handled = true;
 			}
@@ -73,8 +71,8 @@ namespace TConvert {
 		private void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e) {
 			if (e.ExceptionObject != lastException) {
 				lastException = e.ExceptionObject;
-				Dispatcher.Invoke(() => {
-					if (ErrorMessageBox.Show(e.ExceptionObject))
+				Dispatcher.UIThread.InvokeAsync(async () => {
+					if (await ErrorMessageBox.Show(e.ExceptionObject))
 						Environment.Exit(0);
 				});
 			}
@@ -82,8 +80,8 @@ namespace TConvert {
 		private void OnTaskSchedulerUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e) {
 			if (e.Exception != lastException) {
 				lastException = e.Exception;
-				Dispatcher.Invoke(() => {
-					if (ErrorMessageBox.Show(e.Exception))
+				Dispatcher.UIThread.InvokeAsync(async () => {
+					if (await ErrorMessageBox.Show(e.Exception))
 						Environment.Exit(0);
 				});
 			}

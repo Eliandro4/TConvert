@@ -1,10 +1,15 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Timers;
-using System.Windows;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Navigation;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
+using Avalonia.Threading;
+using System.Threading.Tasks;
+using Avalonia.Interactivity;
+using TConvert.Util;
 
 namespace TConvert.Windows {
 	/**<summary>Shows an error that occured in the program.</summary>*/
@@ -37,7 +42,7 @@ namespace TConvert.Windows {
 			this.copyTimer.AutoReset = false;
 			this.copyText = buttonCopy.Content as string;
 			if (alwaysContinue) {
-				this.buttonExit.Visibility = Visibility.Collapsed;
+				this.buttonExit.IsVisible = false;
 				this.buttonContinue.IsDefault = true;
 			}
 		}
@@ -55,7 +60,7 @@ namespace TConvert.Windows {
 				this.buttonException.IsEnabled = false;
 			}
 			if (alwaysContinue) {
-				this.buttonExit.Visibility = Visibility.Collapsed;
+				this.buttonExit.IsVisible = false;
 				this.buttonContinue.IsDefault = true;
 			}
 		}
@@ -65,20 +70,19 @@ namespace TConvert.Windows {
 		//============ EVENTS ============
 		#region Events
 
-		private void OnWindowClosing(object sender, System.ComponentModel.CancelEventArgs e) {
+		private void OnWindowClosing(object sender, WindowClosingEventArgs e) {
 			copyTimer.Stop();
 		}
 		private void OnExit(object sender, RoutedEventArgs e) {
-			DialogResult = true;
-			Close();
+			Close(true);
 		}
 		private void OnCopyTimer(object sender, ElapsedEventArgs e) {
-			Dispatcher.Invoke(() => {
+			Dispatcher.UIThread.InvokeAsync(() => {
 				buttonCopy.Content = copyText;
 			});
 		}
-		private void OnCopyToClipboard(object sender, RoutedEventArgs e) {
-			Clipboard.SetText(exception != null ? exception.ToString() : exceptionObject.ToString());
+		private async void OnCopyToClipboard(object sender, RoutedEventArgs e) {
+			await Clipboard.SetTextAsync(exception != null ? exception.ToString() : exceptionObject.ToString());
 			buttonCopy.Content = "Exception Copied!";
 			copyTimer.Stop();
 			copyTimer.Start();
@@ -89,27 +93,26 @@ namespace TConvert.Windows {
 				buttonException.Content = "See Full Exception";
 				textBlockMessage.Text = "Exception:\n" + exception.Message;
 				clientArea.Height = 230;
-				scrollViewer.ScrollToTop();
+				scrollViewer.ScrollToHome();
 			}
 			else {
 				buttonException.Content = "Hide Full Exception";
-				// Size may not be changed yet so just incase we also have OnMessageSizeChanged
 				textBlockMessage.Text = "Exception:\n" + exception.ToString();
-				clientArea.Height = Math.Min(480, Math.Max(230, textBlockMessage.ActualHeight + 102));
-				scrollViewer.ScrollToTop();
+				clientArea.Height = Math.Min(480, Math.Max(230, textBlockMessage.Bounds.Height + 102));
+				scrollViewer.ScrollToHome();
 			}
 		}
 		private void OnMessageSizeChanged(object sender, SizeChangedEventArgs e) {
 			if (viewingFull) {
-				clientArea.Height = Math.Min(480, Math.Max(230, textBlockMessage.ActualHeight + 102));
-				scrollViewer.ScrollToTop();
+				clientArea.Height = Math.Min(480, Math.Max(230, textBlockMessage.Bounds.Height + 102));
+				scrollViewer.ScrollToHome();
 			}
 		}
 		private void OnPreviewKeyDown(object sender, KeyEventArgs e) {
-			var focused = FocusManager.GetFocusedElement(this);
+			var focused = GetFocusedButton();
 			switch (e.Key) {
 			case Key.Right:
-				if (focused == buttonContinue && buttonExit.Visibility == Visibility.Visible)
+				if (focused == buttonContinue && buttonExit.IsVisible)
 					buttonExit.Focus();
 				else if (focused == buttonCopy)
 					buttonContinue.Focus();
@@ -119,7 +122,7 @@ namespace TConvert.Windows {
 				break;
 			case Key.Left:
 				if (focused == null) {
-					if (buttonExit.Visibility == Visibility.Visible)
+					if (buttonExit.IsVisible)
 						buttonContinue.Focus();
 					else
 						buttonCopy.Focus();
@@ -134,27 +137,31 @@ namespace TConvert.Windows {
 				break;
 			}
 		}
-		private void OnRequestNavigate(object sender, RequestNavigateEventArgs e) {
-			Process.Start((sender as Hyperlink).NavigateUri.ToString());
-		}
 
 		#endregion
 		//=========== SHOWING ============
 		#region Showing
 
 		/**<summary>Shows an error message box with an exception.</summary>*/
-		public static bool Show(Exception exception, bool alwaysContinue = false) {
+		public static async Task<bool> Show(Exception exception, bool alwaysContinue = false) {
 			ErrorMessageBox messageBox = new ErrorMessageBox(exception, alwaysContinue);
-			var result = messageBox.ShowDialog();
-			return result.HasValue && result.Value;
+			return await messageBox.ShowDialog<bool>(null);
 		}
 		/**<summary>Shows an error message box with an exception object.</summary>*/
-		public static bool Show(object exceptionObject, bool alwaysContinue = false) {
+		public static async Task<bool> Show(object exceptionObject, bool alwaysContinue = false) {
 			ErrorMessageBox messageBox = new ErrorMessageBox(exceptionObject, alwaysContinue);
-			var result = messageBox.ShowDialog();
-			return result.HasValue && result.Value;
+			return await messageBox.ShowDialog<bool>(null);
 		}
 
 		#endregion
+
+		/**<summary>Gets the currently focused navigation button, or null.</summary>*/
+		private Button GetFocusedButton() {
+			if (buttonContinue.IsFocused) return buttonContinue;
+			if (buttonExit.IsFocused) return buttonExit;
+			if (buttonCopy.IsFocused) return buttonCopy;
+			if (buttonException.IsFocused) return buttonException;
+			return null;
+		}
 	}
 }

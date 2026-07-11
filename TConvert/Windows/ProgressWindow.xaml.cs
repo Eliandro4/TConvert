@@ -5,24 +5,19 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-using System.Windows.Shell;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using Timer = System.Timers.Timer;
 using TConvert.Util;
+using Avalonia.Interactivity;
 
 namespace TConvert.Windows {
 	/**<summary>The TConvert progress window.</summary>*/
 	public partial class ProgressWindow : Window {
 		//=========== MEMBERS ============
 		#region Members
-			
+
 		/**<summary>The thread being run.</summary>*/
 		private Thread thread;
 		/**<summary>The start time of the operation.</summary>*/
@@ -56,27 +51,18 @@ namespace TConvert.Windows {
 		public void Update(string status, double progress) {
 			labelStatus.Content = status;
 			progressBar.Value = progress;
-			TaskbarItemInfo.ProgressValue = progress;
 		}
 		/**<summary>Tells the window the progress is finished.</summary>*/
 		public void Finish(string status, bool error) {
 			timer.Stop();
 			labelStatus.Content = status;
 			progressBar.Value = 1.0;
-			TaskbarItemInfo.ProgressValue = 1.0;
 			labelTime.Content = "Total Time: " + (DateTime.Now - startTime).ToString(@"m\:ss");
 			buttonFinish.IsEnabled = true;
-			buttonCancel.Visibility = Visibility.Hidden;
+			buttonCancel.IsVisible = false;
 			buttonFinish.Margin = new Thickness(0, 0, 10, 10);
 			buttonFinish.IsDefault = true;
 			buttonFinish.Focus();
-			if (error) {
-				TaskbarItemInfo.ProgressState = TaskbarItemProgressState.Error;
-			}
-			else {
-				TaskbarItemInfo.ProgressState = TaskbarItemProgressState.None;
-			}
-			this.Flash();
 		}
 
 		#endregion
@@ -84,19 +70,17 @@ namespace TConvert.Windows {
 		#region Events
 
 		private void TimerEllapsed(object sender, ElapsedEventArgs e) {
-			Dispatcher.Invoke(() => {
+			Dispatcher.UIThread.InvokeAsync(() => {
 				labelTime.Content = "Time: " + (DateTime.Now - startTime).ToString(@"m\:ss");
 			});
 		}
 		private void OnWindowLoaded(object sender, RoutedEventArgs e) {
 			startTime = DateTime.Now;
-			TaskbarItemInfo.ProgressState = TaskbarItemProgressState.Normal;
-			TaskbarItemInfo.ProgressValue = 0;
 			timer.Start();
 			thread.Start();
 		}
-		private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e) {
-			if (thread.ThreadState != ThreadState.Stopped) {
+		private void OnClosing(object sender, WindowClosingEventArgs e) {
+			if (thread != null && thread.ThreadState != ThreadState.Stopped) {
 				try {
 					thread.Abort();
 				}
@@ -104,18 +88,18 @@ namespace TConvert.Windows {
 			}
 		}
 		private void OnCancel(object sender, RoutedEventArgs e) {
-			if (thread.ThreadState != ThreadState.Stopped) {
+			if (thread != null && thread.ThreadState != ThreadState.Stopped) {
 				try {
 					thread.Abort();
 				}
 				catch { }
 			}
-			DialogResult = false;
 			if (cancel != null)
 				cancel();
+			Close();
 		}
 		private void OnFinish(object sender, RoutedEventArgs e) {
-			DialogResult = true;
+			Close();
 		}
 
 		#endregion

@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Documents;
-using System.Windows.Navigation;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Interactivity;
 
 namespace TConvert.Windows {
 	/**<summary>A window to display credits for the program.</summary>*/
@@ -16,22 +18,13 @@ namespace TConvert.Windows {
 		}
 
 		#endregion
-		//============ EVENTS ============
-		#region Events
-
-		private void OnRequestNavigate(object sender, RequestNavigateEventArgs e) {
-			Process.Start((sender as Hyperlink).NavigateUri.ToString());
-		}
-
-		#endregion
 		//=========== SHOWING ============
 		#region Showing
 
 		/**<summary>Shows the credits window.</summary>*/
-		public static void Show(Window owner) {
+		public new static void Show(Window owner) {
 			CreditsWindow window = new CreditsWindow();
-			window.Owner = owner;
-			window.ShowDialog();
+			window.ShowDialog(owner);
 		}
 
 		#endregion

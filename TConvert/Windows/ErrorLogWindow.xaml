@@ -1,30 +1,27 @@
-﻿<Window x:Class="TConvert.Windows.ErrorLogWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TConvert.Windows"
         mc:Ignorable="d"
-        Height="350" Width="500" WindowStartupLocation="CenterOwner" 
-        Title="Error Log" Icon="/Resources/Icons/AppError.ico" ShowInTaskbar="False" MinWidth="500" MinHeight="350">
-    <Window.TaskbarItemInfo>
-        <TaskbarItemInfo/>
-    </Window.TaskbarItemInfo>
+        x:Class="TConvert.Windows.ErrorLogWindow"
+        Height="350" Width="500" WindowStartupLocation="CenterOwner" CanResize="False" UseLayoutRounding="True"
+        Title="Error Log" Icon="avares://TConvert/Resources/Icons/AppError.ico" ShowInTaskbar="False" MinWidth="500" MinHeight="350">
     <Grid>
-        <Label Margin="18,15,18,0" VerticalAlignment="Top" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="0" Grid.ColumnSpan="2">
-            <TextBlock TextWrapping="WrapWithOverflow" Text="Errors and/or warnings occurred during last operation" HorizontalAlignment="Left" VerticalAlignment="Top" FontWeight="Bold"/>
+        <Label Margin="18,15,18,0" VerticalAlignment="Top" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="0">
+            <TextBlock TextWrapping="Wrap" Text="Errors and/or warnings occurred during last operation" HorizontalAlignment="Left" VerticalAlignment="Top" FontWeight="Bold"/>
         </Label>
 
-        <Border Margin="18,43,18,54" BorderThickness="1" BorderBrush="#FF828790" Grid.ColumnSpan="2">
-            <ScrollViewer Background="#FFFBFBFB" ScrollViewer.VerticalScrollBarVisibility="Visible" Padding="4,1" HorizontalScrollBarVisibility="Auto">
+        <Border Margin="18,43,18,54" BorderThickness="1" BorderBrush="#FF828790">
+            <ScrollViewer Background="#FFFBFBFB" VerticalScrollBarVisibility="Auto" Padding="4,1" HorizontalScrollBarVisibility="Auto">
                 <TextBlock x:Name="textBlockMessage" Text="Log" HorizontalAlignment="Left" VerticalAlignment="Top"/>
             </ScrollViewer>
         </Border>
 
-        <Rectangle Fill="#FFF0F0F0" Height="49" Margin="0" VerticalAlignment="Bottom" StrokeThickness="0" Grid.ColumnSpan="2"/>
+        <Rectangle Fill="#FFF0F0F0" Height="49" Margin="0" VerticalAlignment="Bottom" StrokeThickness="0"/>
         <Separator Background="#FFDFDFDF" Margin="0,0,0,48" VerticalAlignment="Bottom"/>
-        
+
         <Button Content="Open Log File" HorizontalAlignment="Left" Margin="18,0,0,12" VerticalAlignment="Bottom" Width="128" Focusable="False" IsTabStop="False" Click="OnOpenLogFile"/>
-        <Button Content="Close" HorizontalAlignment="Right" Margin="0,0,18,12" VerticalAlignment="Bottom" Width="80" Focusable="False" IsTabStop="False" IsCancel="True" IsDefault="True" Grid.Column="1"/>
+        <Button Content="Close" HorizontalAlignment="Right" Margin="0,0,18,12" VerticalAlignment="Bottom" Width="80" Focusable="False" IsTabStop="False" IsCancel="True" IsDefault="True"/>
     </Grid>
 </Window>

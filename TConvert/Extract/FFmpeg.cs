@@ -28,7 +28,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using TConvert.Properties;
 using TConvert.Util;
 
 namespace TConvert.Extract {

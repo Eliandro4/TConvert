@@ -6,16 +6,12 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using Microsoft.Win32;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Platform.Storage;
+using Avalonia.Threading;
+using Avalonia.Interactivity;
 using TConvert.Convert;
 using TConvert.Extract;
 using TConvert.Util;
@@ -46,33 +42,9 @@ namespace TConvert {
 			lastFolderPath = "";
 			lastFilePath = "";
 
-			// Disable drag/drop text in textboxes so you can scroll their contents easily
-			DataObject.AddCopyingHandler(textBoxTerrariaContent, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxExtractInput, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxExtractOutput, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxConvertInput, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxConvertOutput, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxContent, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxBackup, OnTextBoxCancelDrag);
-			DataObject.AddCopyingHandler(textBoxScript, OnTextBoxCancelDrag);
-
-			// Remove quotes from "Copy Path" command on paste
-			DataObject.AddPastingHandler(textBoxTerrariaContent, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxExtractInput, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxExtractOutput, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxConvertInput, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxConvertOutput, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxContent, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxBackup, OnTextBoxQuotesPaste);
-			DataObject.AddPastingHandler(textBoxScript, OnTextBoxQuotesPaste);
-
-			labelDrop.Visibility = Visibility.Hidden;
+			labelDrop.IsVisible = false;
 
 			LoadConfig();
-		}
-
-		private void OnTextBoxCancelDrag(object sender, DataObjectPastingEventArgs e) {
-			throw new NotImplementedException();
 		}
 
 		#endregion
@@ -80,7 +52,7 @@ namespace TConvert {
 		#region Config
 
 		/**<summary>Loads the config and updates controls.</summary>*/
-		private void LoadConfig() {
+		void LoadConfig() {
 			loaded = false;
 
 			Config.Load();
@@ -150,60 +122,35 @@ namespace TConvert {
 			menuItemAutoCloseDropProgress.IsChecked = Config.AutoCloseDropProgress;
 			menuItemAutoCloseCmdProgress.IsChecked = Config.AutoCloseCmdProgress;
 		}
-		
+
 		#endregion
 		//============ EVENTS ============
 		#region Events
 		//--------------------------------
 		#region General
 
-		private void OnWindowLoaded(object sender, RoutedEventArgs e) {
+		void OnWindowLoaded(object sender, RoutedEventArgs e) {
 			loaded = true;
 		}
-		private void OnWindowClosing(object sender, System.ComponentModel.CancelEventArgs e) {
+		void OnWindowClosing(object sender, WindowClosingEventArgs e) {
 			try {
 				Config.Save();
 			}
 			catch { }
 		}
-		private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e) {
-			// Make text boxes lose focus on click away
-			FocusManager.SetFocusedElement(this, this);
-		}
-		private void OnTextBoxCancelDrag(object sender, DataObjectCopyingEventArgs e) {
-			if (e.IsDragDrop)
-				e.CancelCommand();
-		}
-		private void OnTextBoxQuotesPaste(object sender, DataObjectPastingEventArgs e) {
-			var isText = e.SourceDataObject.GetDataPresent(DataFormats.UnicodeText, true);
-			if (!isText) return;
-
-			var text = e.SourceDataObject.GetData(DataFormats.UnicodeText) as string;
-			if (text.StartsWith("\"") || text.EndsWith("\"")) {
-				text = text.Trim('"');
-				Clipboard.SetText(text);
-			}
-		}
-		private void OnTabChanged(object sender, SelectionChangedEventArgs e) {
+		void OnTabChanged(object sender, SelectionChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.CurrentTab = (Tabs)tabControl.SelectedIndex;
 		}
-		private void OnBrowseTerraria(object sender, RoutedEventArgs e) {
-			System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog();
-			dialog.ShowNewFolderButton = false;
-			dialog.Description = "Choose Terraria Content folder";
-			dialog.SelectedPath = Helpers.FixPathSafe(Config.TerrariaContentDirectory);
-			if (dialog.SelectedPath == string.Empty)
-				dialog.SelectedPath = lastFolderPath;
-			var result = FolderBrowserLauncher.ShowFolderBrowser(dialog);
-			if (result == System.Windows.Forms.DialogResult.OK) {
-				Config.TerrariaContentDirectory = dialog.SelectedPath;
-				textBoxTerrariaContent.Text = dialog.SelectedPath;
+		async void OnBrowseTerraria(object sender, RoutedEventArgs e) {
+			string path = await GetFolderPath(Config.TerrariaContentDirectory, "Choose Terraria Content folder");
+			if (path != null) {
+				Config.TerrariaContentDirectory = path;
+				textBoxTerrariaContent.Text = path;
 			}
-			lastFolderPath = dialog.SelectedPath;
 		}
-		private void OnTerrariaContentChanged(object sender, TextChangedEventArgs e) {
+		void OnTerrariaContentChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.TerrariaContentDirectory = textBoxTerrariaContent.Text;
@@ -213,7 +160,7 @@ namespace TConvert {
 		//--------------------------------
 		#region Extracting
 
-		private void OnExtract(object sender, RoutedEventArgs e) {
+		void OnExtract(object sender, RoutedEventArgs e) {
 			string input = Config.Extract.CurrentInput;
 			string output = (Config.Extract.UseInput ? Config.Extract.CurrentInput : Config.Extract.CurrentOutput);
 			bool allowImages = Config.Extract.AllowImages;
@@ -254,11 +201,11 @@ namespace TConvert {
 			}
 			Processing.StartProgressThread(this, "Extracting...", Config.AutoCloseProgress, Config.CompressImages, Config.CompletionSound, Config.PremultiplyAlpha, thread);
 		}
-		private void OnExtractModeChanged(object sender, SelectionChangedEventArgs e) {
+		void OnExtractModeChanged(object sender, SelectionChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Extract.Mode = (InputModes)comboBoxExtractMode.SelectedIndex;
-			
+
 			switch (Config.Extract.Mode) {
 			case InputModes.Folder:
 				labelExtractInput.Content = "Input Folder";
@@ -277,58 +224,58 @@ namespace TConvert {
 			checkBoxExtractFonts.IsEnabled = Config.Extract.Mode == InputModes.Folder;
 			checkBoxExtractWaveBank.IsEnabled = Config.Extract.Mode == InputModes.Folder;
 		}
-		private void OnExtractChangeInput(object sender, RoutedEventArgs e) {
-			string path = GetPath(Config.Extract.CurrentInput, true, true);
+		async void OnExtractChangeInput(object sender, RoutedEventArgs e) {
+			string path = await GetPath(Config.Extract.CurrentInput, true, true);
 			if (path != null) {
 				Config.Extract.CurrentInput = path;
 				textBoxExtractInput.Text = path;
 			}
 		}
-		private void OnExtractChangeOutput(object sender, RoutedEventArgs e) {
-			string path = GetPath(Config.Extract.CurrentOutput, false, true);
+		async void OnExtractChangeOutput(object sender, RoutedEventArgs e) {
+			string path = await GetPath(Config.Extract.CurrentOutput, false, true);
 			if (path != null) {
 				Config.Extract.CurrentOutput = path;
 				textBoxExtractOutput.Text = path;
 			}
 		}
-		private void OnExtractUseInputChecked(object sender, RoutedEventArgs e) {
-			Config.Extract.UseInput = checkBoxExtractUseInput.IsChecked.Value;
+		void OnExtractUseInputChecked(object sender, RoutedEventArgs e) {
+			Config.Extract.UseInput = checkBoxExtractUseInput.IsChecked ?? false;
 			textBoxExtractOutput.IsEnabled = !Config.Extract.UseInput;
 			buttonExtractOutput.IsEnabled = !Config.Extract.UseInput;
 			buttonExtractUseTerraria.IsEnabled = !Config.Extract.UseInput && Config.Extract.Mode == InputModes.Folder;
 		}
-		private void OnExtractImagesChecked(object sender, RoutedEventArgs e) {
+		void OnExtractImagesChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Extract.AllowImages = checkBoxExtractImages.IsChecked.Value;
+			Config.Extract.AllowImages = checkBoxExtractImages.IsChecked ?? false;
 		}
-		private void OnExtractSoundsChecked(object sender, RoutedEventArgs e) {
+		void OnExtractSoundsChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Extract.AllowSounds = checkBoxExtractSounds.IsChecked.Value;
+			Config.Extract.AllowSounds = checkBoxExtractSounds.IsChecked ?? false;
 		}
-		private void OnExtractFontsChecked(object sender, RoutedEventArgs e) {
+		void OnExtractFontsChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Extract.AllowFonts = checkBoxExtractFonts.IsChecked.Value;
+			Config.Extract.AllowFonts = checkBoxExtractFonts.IsChecked ?? false;
 		}
-		private void OnExtractWaveBankChecked(object sender, RoutedEventArgs e) {
+		void OnExtractWaveBankChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Extract.AllowWaveBank = checkBoxExtractWaveBank.IsChecked.Value;
+			Config.Extract.AllowWaveBank = checkBoxExtractWaveBank.IsChecked ?? false;
 		}
-		private void OnExtractUseTerraria(object sender, RoutedEventArgs e) {
+		void OnExtractUseTerraria(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Extract.FolderInput = Config.TerrariaContentDirectory;
 			textBoxExtractInput.Text = Config.TerrariaContentDirectory;
 		}
-		private void OnExtractInputChanged(object sender, TextChangedEventArgs e) {
+		void OnExtractInputChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Extract.CurrentInput = textBoxExtractInput.Text;
 		}
-		private void OnExtractOutputChanged(object sender, TextChangedEventArgs e) {
+		void OnExtractOutputChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Extract.CurrentOutput = textBoxExtractOutput.Text;
@@ -338,7 +285,7 @@ namespace TConvert {
 		//--------------------------------
 		#region Converting
 
-		private void OnConvert(object sender, RoutedEventArgs e) {
+		void OnConvert(object sender, RoutedEventArgs e) {
 			string input = Config.Convert.CurrentInput;
 			string output = (Config.Convert.UseInput ? Config.Convert.CurrentInput : Config.Convert.CurrentOutput);
 			bool allowImages = Config.Convert.AllowImages;
@@ -377,7 +324,7 @@ namespace TConvert {
 			}
 			Processing.StartProgressThread(this, "Converting...", Config.AutoCloseProgress, Config.CompressImages, Config.CompletionSound, Config.PremultiplyAlpha, thread);
 		}
-		private void OnConvertModeChanged(object sender, SelectionChangedEventArgs e) {
+		void OnConvertModeChanged(object sender, SelectionChangedEventArgs e) {
 			if (!loaded)
 				return;
 
@@ -399,48 +346,48 @@ namespace TConvert {
 			checkBoxConvertImages.IsEnabled = Config.Convert.Mode == InputModes.Folder;
 			checkBoxConvertSounds.IsEnabled = Config.Convert.Mode == InputModes.Folder;
 		}
-		private void OnConvertChangeInput(object sender, RoutedEventArgs e) {
-			string path = GetPath(Config.Convert.CurrentInput, true, false);
+		async void OnConvertChangeInput(object sender, RoutedEventArgs e) {
+			string path = await GetPath(Config.Convert.CurrentInput, true, false);
 			if (path != null) {
 				Config.Convert.CurrentInput = path;
 				textBoxConvertInput.Text = path;
 			}
 		}
-		private void OnConvertChangeOutput(object sender, RoutedEventArgs e) {
-			string path = GetPath(Config.Convert.CurrentOutput, false, false);
+		async void OnConvertChangeOutput(object sender, RoutedEventArgs e) {
+			string path = await GetPath(Config.Convert.CurrentOutput, false, false);
 			if (path != null) {
 				Config.Convert.CurrentOutput = path;
 				textBoxConvertOutput.Text = path;
 			}
 		}
-		private void OnConvertUseInputChecked(object sender, RoutedEventArgs e) {
-			Config.Convert.UseInput = checkBoxConvertUseInput.IsChecked.Value;
+		void OnConvertUseInputChecked(object sender, RoutedEventArgs e) {
+			Config.Convert.UseInput = checkBoxConvertUseInput.IsChecked ?? false;
 			textBoxConvertOutput.IsEnabled = !Config.Convert.UseInput;
 			buttonConvertOutput.IsEnabled = !Config.Convert.UseInput;
 			buttonConvertUseTerraria.IsEnabled = !Config.Convert.UseInput && Config.Convert.Mode == InputModes.Folder;
 		}
-		private void OnConvertImagesChecked(object sender, RoutedEventArgs e) {
+		void OnConvertImagesChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Convert.AllowImages = checkBoxConvertImages.IsChecked.Value;
+			Config.Convert.AllowImages = checkBoxConvertImages.IsChecked ?? false;
 		}
-		private void OnConvertSoundsChecked(object sender, RoutedEventArgs e) {
+		void OnConvertSoundsChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
-			Config.Convert.AllowSounds = checkBoxConvertSounds.IsChecked.Value;
+			Config.Convert.AllowSounds = checkBoxConvertSounds.IsChecked ?? false;
 		}
-		private void OnConvertUseTerraria(object sender, RoutedEventArgs e) {
+		void OnConvertUseTerraria(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Convert.FolderOutput = Config.TerrariaContentDirectory;
 			textBoxConvertOutput.Text = Config.TerrariaContentDirectory;
 		}
-		private void OnConvertInputChanged(object sender, TextChangedEventArgs e) {
+		void OnConvertInputChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Convert.CurrentInput = textBoxConvertInput.Text;
 		}
-		private void OnConvertOutputChanged(object sender, TextChangedEventArgs e) {
+		void OnConvertOutputChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Convert.CurrentOutput = textBoxConvertOutput.Text;
@@ -450,7 +397,7 @@ namespace TConvert {
 		//--------------------------------
 		#region Backup/Restore
 
-		private void OnBackup(object sender, RoutedEventArgs e) {
+		void OnBackup(object sender, RoutedEventArgs e) {
 			string input = Config.Backup.FolderContent;
 			string output = Config.Backup.FolderBackup;
 
@@ -474,7 +421,7 @@ namespace TConvert {
 			});
 			Processing.StartProgressThread(this, "Backing Up...", Config.AutoCloseProgress, Config.CompressImages, Config.CompletionSound, Config.PremultiplyAlpha, thread);
 		}
-		private void OnRestore(object sender, RoutedEventArgs e) {
+		void OnRestore(object sender, RoutedEventArgs e) {
 			string input = Config.Backup.FolderBackup;
 			string output = Config.Backup.FolderContent;
 
@@ -498,44 +445,30 @@ namespace TConvert {
 			});
 			Processing.StartProgressThread(this, "Restoring...", Config.AutoCloseProgress, Config.CompressImages, Config.CompletionSound, Config.PremultiplyAlpha, thread);
 		}
-		private void OnBackupChangeContent(object sender, RoutedEventArgs e) {
-			System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog();
-			dialog.ShowNewFolderButton = true;
-			dialog.Description = "Choose Content folder";
-			dialog.SelectedPath = Config.Backup.FolderContent;
-			if (dialog.SelectedPath == string.Empty)
-				dialog.SelectedPath = lastFolderPath;
-			var result = FolderBrowserLauncher.ShowFolderBrowser(dialog);
-			if (result == System.Windows.Forms.DialogResult.OK) {
-				Config.Backup.FolderContent = dialog.SelectedPath;
-				textBoxContent.Text = dialog.SelectedPath;
+		async void OnBackupChangeContent(object sender, RoutedEventArgs e) {
+			string path = await GetFolderPath(Config.Backup.FolderContent, "Choose Content folder");
+			if (path != null) {
+				Config.Backup.FolderContent = path;
+				textBoxContent.Text = path;
 			}
-			lastFolderPath = dialog.SelectedPath;
 		}
-		private void OnBackupChangeBackup(object sender, RoutedEventArgs e) {
-			System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog();
-			dialog.ShowNewFolderButton = true;
-			dialog.Description = "Choose Backup folder";
-			dialog.SelectedPath = Config.Backup.FolderBackup;
-			if (dialog.SelectedPath == string.Empty)
-				dialog.SelectedPath = lastFolderPath;
-			var result = FolderBrowserLauncher.ShowFolderBrowser(dialog);
-			if (result == System.Windows.Forms.DialogResult.OK) {
-				Config.Backup.FolderBackup = dialog.SelectedPath;
-				textBoxBackup.Text = dialog.SelectedPath;
+		async void OnBackupChangeBackup(object sender, RoutedEventArgs e) {
+			string path = await GetFolderPath(Config.Backup.FolderBackup, "Choose Backup folder");
+			if (path != null) {
+				Config.Backup.FolderBackup = path;
+				textBoxBackup.Text = path;
 			}
-			lastFolderPath = dialog.SelectedPath;
 		}
-		private void OnBackupUseTerraria(object sender, RoutedEventArgs e) {
+		void OnBackupUseTerraria(object sender, RoutedEventArgs e) {
 			Config.Backup.FolderContent = Config.TerrariaContentDirectory;
 			textBoxContent.Text = Config.TerrariaContentDirectory;
 		}
-		private void OnContentChanged(object sender, TextChangedEventArgs e) {
+		void OnContentChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Backup.FolderContent = textBoxContent.Text;
 		}
-		private void OnBackupChanged(object sender, TextChangedEventArgs e) {
+		void OnBackupChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Backup.FolderBackup = textBoxBackup.Text;
@@ -545,7 +478,7 @@ namespace TConvert {
 		//--------------------------------
 		#region Scripting
 
-		private void OnRunScript(object sender, RoutedEventArgs e) {
+		void OnRunScript(object sender, RoutedEventArgs e) {
 			string input = Config.Script.File;
 
 			Thread thread;
@@ -559,35 +492,44 @@ namespace TConvert {
 			});
 			Processing.StartProgressThread(this, "Running Script...", Config.AutoCloseProgress, Config.CompressImages, Config.CompletionSound, Config.PremultiplyAlpha, thread);
 		}
-		private void OnChangeScript(object sender, RoutedEventArgs e) {
-			OpenFileDialog dialog = new OpenFileDialog();
-			dialog.Filter = "Xml files (*.xml)|*.xml|All files (*.*)|*.*";
-			dialog.FilterIndex = 0;
-			dialog.Title = "Choose script file";
-			dialog.CheckFileExists = true;
-			if (Config.Script.File != string.Empty) {
+		async void OnChangeScript(object sender, RoutedEventArgs e) {
+			string input = Config.Script.File;
+
+			if (!Helpers.FileExistsSafe(input)) {
+				TriggerMessageBox.Show(this, MessageIcon.Warning, "Could not find the script file.", "Invalid Path");
+				return;
+			}
+			IStorageFolder scriptStart = null;
+			if (!string.IsNullOrEmpty(Config.Script.File)) {
 				try {
-					dialog.FileName = Path.GetFileName(Config.Script.File);
-					dialog.InitialDirectory = Path.GetDirectoryName(Config.Script.File);
+					scriptStart = await StorageProvider.TryGetFolderFromPathAsync(Path.GetDirectoryName(Config.Script.File) ?? lastFilePath);
 				}
 				catch {
-					dialog.InitialDirectory = lastFilePath;
+					scriptStart = null;
 				}
 			}
-			else {
-				dialog.InitialDirectory = lastFilePath;
+			var options = new FilePickerOpenOptions {
+				Title = "Choose script file",
+				AllowMultiple = false,
+				SuggestedFileName = !string.IsNullOrEmpty(Config.Script.File) ? Path.GetFileName(Config.Script.File) : null,
+				SuggestedStartLocation = scriptStart,
+				FileTypeFilter = new List<FilePickerFileType> {
+					new FilePickerFileType("Xml files") { Patterns = new List<string> { "xml" } },
+					new FilePickerFileType("All files") { Patterns = new List<string> { "*" } }
+				}
+			};
+			var result = await StorageProvider.OpenFilePickerAsync(options);
+			if (result != null && result.Count > 0) {
+				string file = result[0].Path.LocalPath;
+				textBoxScript.Text = file;
+				Config.Script.File = file;
+				try {
+					lastFilePath = Path.GetDirectoryName(file);
+				}
+				catch { }
 			}
-			var result = dialog.ShowDialog(this);
-			if (result.HasValue && result.Value) {
-				textBoxScript.Text = dialog.FileName;
-				Config.Script.File = dialog.FileName;
-			}
-			try {
-				lastFilePath = Path.GetDirectoryName(dialog.FileName);
-			}
-			catch { }
 		}
-		private void OnScriptChanged(object sender, TextChangedEventArgs e) {
+		void OnScriptChanged(object sender, TextChangedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.Script.File = textBoxScript.Text;
@@ -597,14 +539,14 @@ namespace TConvert {
 		//--------------------------------
 		#region File Drop
 
-		private void OnFileDrop(object sender, DragEventArgs e) {
-			labelDrop.Visibility = Visibility.Hidden;
-			if (this.OwnedWindows.Count == 0 && e.Data.GetDataPresent(DataFormats.FileDrop)) {
+		void OnFileDrop(object sender, DragEventArgs e) {
+			labelDrop.IsVisible = false;
+			if (this.OwnedWindows.Count == 0 && e.DataTransfer.Items.OfType<IStorageItem>().Any()) {
 				List<string> files = new List<string>();
 				List<string> extractFiles = new List<string>();
 				List<string> convertFiles = new List<string>();
 				List<string> scriptFiles = new List<string>();
-				string[] initialFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
+				var initialFiles = e.DataTransfer.Items.OfType<IStorageItem>().Select(item => item.Path.LocalPath).ToArray();
 
 				// Allow extracting/converting of directories too
 				foreach (string file in initialFiles) {
@@ -613,7 +555,7 @@ namespace TConvert {
 					else
 						files.Add(file);
 				}
-				
+
 				foreach (string file in files) {
 					string ext = Path.GetExtension(file).ToLower();
 					switch (ext) {
@@ -637,13 +579,7 @@ namespace TConvert {
 				}
 
 				if (extractFiles.Count == 0 && convertFiles.Count == 0 && scriptFiles.Count == 0) {
-					// Prevent Explorer from freazing until the message box is closed
-					Thread showThread = new Thread(() => {
-						Application.Current.Dispatcher.Invoke(() => {
-							TriggerMessageBox.Show(this, MessageIcon.Warning, "No files to convert or extract, or scripts to run!", "File Drop");
-						});
-					});
-					showThread.Start();
+					TriggerMessageBox.Show(this, MessageIcon.Warning, "No files to convert or extract, or scripts to run!", "File Drop");
 				}
 				else {
 					Thread thread = new Thread(() => {
@@ -653,34 +589,34 @@ namespace TConvert {
 				}
 			}
 		}
-		private void OnFileDropEnter(object sender, DragEventArgs e) {
-			if (this.OwnedWindows.Count == 0 && e.Data.GetDataPresent(DataFormats.FileDrop)) {
-				labelDrop.Visibility = Visibility.Visible;
-				e.Effects = DragDropEffects.Copy;
+		void OnFileDropEnter(object sender, DragEventArgs e) {
+			if (this.OwnedWindows.Count == 0 && e.DataTransfer.Items.OfType<IStorageItem>().Any()) {
+				labelDrop.IsVisible = true;
+				e.DragEffects = DragDropEffects.Copy;
 			}
 			else {
-				e.Effects = DragDropEffects.None;
+				e.DragEffects = DragDropEffects.None;
 			}
 			e.Handled = true;
 		}
-		private void OnFileDropOver(object sender, DragEventArgs e) {
-			if (this.OwnedWindows.Count == 0 && e.Data.GetDataPresent(DataFormats.FileDrop)) {
-				e.Effects = DragDropEffects.Copy;
+		void OnFileDropOver(object sender, DragEventArgs e) {
+			if (this.OwnedWindows.Count == 0 && e.DataTransfer.Items.OfType<IStorageItem>().Any()) {
+				e.DragEffects = DragDropEffects.Copy;
 			}
 			else {
-				e.Effects = DragDropEffects.None;
+				e.DragEffects = DragDropEffects.None;
 			}
 			e.Handled = true;
 		}
-		private void OnFileDropLeave(object sender, DragEventArgs e) {
-			labelDrop.Visibility = Visibility.Hidden;
+		void OnFileDropLeave(object sender, DragEventArgs e) {
+			labelDrop.IsVisible = false;
 		}
 
 		#endregion
 		//--------------------------------
 		#region Menu Items
 
-		private void OnLaunchTerraria(object sender, RoutedEventArgs e) {
+		void OnLaunchTerraria(object sender, RoutedEventArgs e) {
 			if (Config.TerrariaContentDirectory != string.Empty) {
 				try {
 					string dir = Path.GetDirectoryName(Config.TerrariaContentDirectory);
@@ -690,6 +626,7 @@ namespace TConvert {
 						start.FileName = terraria;
 						start.Arguments = TerrariaLocator.FindTerraLauncherSaveDirectory(terraria);
 						start.WorkingDirectory = dir;
+						start.UseShellExecute = true;
 						Process.Start(start);
 						return;
 					}
@@ -704,6 +641,7 @@ namespace TConvert {
 						start.FileName = terraria;
 						start.Arguments = TerrariaLocator.FindTerraLauncherSaveDirectory(terraria);
 						start.WorkingDirectory = dir;
+						start.UseShellExecute = true;
 						Process.Start(start);
 						return;
 					}
@@ -715,64 +653,64 @@ namespace TConvert {
 				TriggerMessageBox.Show(this, MessageIcon.Warning, "No path to Terraria specified.", "No Path");
 			}
 		}
-		private void OnOpenTerrariaFolder(object sender, RoutedEventArgs e) {
+		void OnOpenTerrariaFolder(object sender, RoutedEventArgs e) {
 			if (Config.TerrariaContentDirectory != string.Empty) {
 				string dir = Config.TerrariaContentDirectory;
 				try {
 					dir = Path.GetDirectoryName(Config.TerrariaContentDirectory);
-					Process.Start(dir);
+					OpenPath(dir);
 				}
 				catch {
 					TriggerMessageBox.Show(this, MessageIcon.Warning, "Failed to locate Terraria folder.", "Missing Folder");
 				}
 			}
 		}
-		private void OnExit(object sender, RoutedEventArgs e) {
+		void OnExit(object sender, RoutedEventArgs e) {
 			Close();
 		}
 
-		private void OnPremultiplyAlphaChecked(object sender, RoutedEventArgs e) {
+		void OnPremultiplyAlphaChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.PremultiplyAlpha = menuItemPremultiply.IsChecked;
 		}
-		private void OnCompressImagesChecked(object sender, RoutedEventArgs e) {
+		void OnCompressImagesChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.CompressImages = menuItemCompressImages.IsChecked;
 		}
-		private void OnCompletionSoundChecked(object sender, RoutedEventArgs e) {
+		void OnCompletionSoundChecked(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.CompletionSound = menuItemCompletionSound.IsChecked;
 		}
-		private void OnAutoCloseProgress(object sender, RoutedEventArgs e) {
+		void OnAutoCloseProgress(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.AutoCloseProgress = menuItemAutoCloseProgress.IsChecked;
 		}
-		private void OnAutoCloseDropProgress(object sender, RoutedEventArgs e) {
+		void OnAutoCloseDropProgress(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.AutoCloseDropProgress = menuItemAutoCloseDropProgress.IsChecked;
 		}
-		private void OnAutoCloseCmdProgress(object sender, RoutedEventArgs e) {
+		void OnAutoCloseCmdProgress(object sender, RoutedEventArgs e) {
 			if (!loaded)
 				return;
 			Config.AutoCloseCmdProgress = menuItemAutoCloseCmdProgress.IsChecked;
 		}
 
-		private void OnAbout(object sender, RoutedEventArgs e) {
+		void OnAbout(object sender, RoutedEventArgs e) {
 			AboutWindow.Show(this);
 		}
-		private void OnHelp(object sender, RoutedEventArgs e) {
-			Process.Start("https://github.com/trigger-death/TConvert/wiki");
+		void OnHelp(object sender, RoutedEventArgs e) {
+			OpenPath("https://github.com/trigger-death/TConvert/wiki");
 		}
-		private void OnCredits(object sender, RoutedEventArgs e) {
+		void OnCredits(object sender, RoutedEventArgs e) {
 			CreditsWindow.Show(this);
 		}
-		private void OnViewOnGitHub(object sender, RoutedEventArgs e) {
-			Process.Start("https://github.com/trigger-death/TConvert");
+		void OnViewOnGitHub(object sender, RoutedEventArgs e) {
+			OpenPath("https://github.com/trigger-death/TConvert");
 		}
 
 		#endregion
@@ -781,62 +719,105 @@ namespace TConvert {
 		//=========== HELPERS ============
 		#region Helpers
 
-		private string GetPath(string currentPath, bool input, bool extract) {
+		/**<summary>Opens a path using the OS shell.</summary>*/
+		static void OpenPath(string path) {
+			try {
+				Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+			}
+			catch { }
+		}
+		/**<summary>Shows a folder browser dialog and returns the selected path.</summary>*/
+		async Task<string> GetFolderPath(string currentPath, string description) {
+			var options = new FolderPickerOpenOptions {
+				Title = description,
+				AllowMultiple = false
+			};
+			if (!string.IsNullOrEmpty(currentPath)) {
+				try {
+					options.SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(currentPath);
+				}
+				catch { }
+			}
+			var result = await StorageProvider.OpenFolderPickerAsync(options);
+			if (result != null && result.Count > 0) {
+				string path = result[0].Path.LocalPath;
+				lastFolderPath = path;
+				return path;
+			}
+			return null;
+		}
+		/**<summary>Shows a file or folder browser dialog and returns the selected path.</summary>*/
+		async Task<string> GetPath(string currentPath, bool input, bool extract) {
 			switch (extract ? Config.Extract.Mode : Config.Convert.Mode) {
 			case InputModes.Folder: {
-					System.Windows.Forms.FolderBrowserDialog dialog = new System.Windows.Forms.FolderBrowserDialog();
-					dialog.ShowNewFolderButton = true;
-					dialog.Description = "Choose " + (input ? "input" : "output") + " folder";
-					dialog.SelectedPath = currentPath;
-					if (dialog.SelectedPath == string.Empty)
-						dialog.SelectedPath = lastFolderPath;
-					var result = FolderBrowserLauncher.ShowFolderBrowser(dialog);
-					lastFolderPath = dialog.SelectedPath;
-					if (result == System.Windows.Forms.DialogResult.OK) {
-						return dialog.SelectedPath;
-					}
-					break;
-				}
-			case InputModes.File: {
-					FileDialog dialog;
-					if (input)
-						dialog = new OpenFileDialog();
-					else
-						dialog = new SaveFileDialog();
-					string audioFiles = "*.wav;*.mp3;*.mp2;*.mpga;*.m4a;*.aac;*.flac;*.ogg;*.wma;*.aif;*.aiff;*.aifc";
-					dialog.Filter = (extract == input ?
-						"Xna files|*.xnb;*.xwb|" +
-						"Xnb files|*.xnb|" +
-						"Xwb files|*.xwb|" :
-						"Image & Audio files (*.png;*.wav;...)|*.png;*.bmp;*.jpg;" + audioFiles + "|" +
-						"Image files|*.png;*.bmp;*.jpg;|" +
-						"Audio files (*.wav;*.mp3;...)|" + audioFiles + "|"
-						) + "All files|*.*";
-					dialog.FilterIndex = 0;
-					dialog.Title = "Choose " + (input ? "input" : "output") + " file";
-					dialog.CheckFileExists = input;
-					if (currentPath != string.Empty) {
+					var options = new FolderPickerOpenOptions {
+						Title = "Choose " + (input ? "input" : "output") + " folder",
+						AllowMultiple = false
+					};
+					if (!string.IsNullOrEmpty(currentPath)) {
 						try {
-							dialog.FileName = Path.GetFileName(currentPath);
+							options.SuggestedStartLocation = await StorageProvider.TryGetFolderFromPathAsync(currentPath);
 						}
 						catch { }
+					}
+					var result = await StorageProvider.OpenFolderPickerAsync(options);
+					if (result != null && result.Count > 0) {
+						string path = result[0].Path.LocalPath;
+						lastFolderPath = path;
+						return path;
+					}
+					return null;
+				}
+			case InputModes.File: {
+					IStorageFolder start = null;
+					if (!string.IsNullOrEmpty(currentPath)) {
 						try {
-							dialog.InitialDirectory = Path.GetDirectoryName(currentPath);
+							start = await StorageProvider.TryGetFolderFromPathAsync(Path.GetDirectoryName(currentPath));
 						}
-						catch {
-							dialog.InitialDirectory = lastFilePath;
+						catch { }
+					}
+					FilePickerFileType[] filters = new FilePickerFileType[] {
+						new FilePickerFileType(extract == input ? "Xna files" : "Image & Audio files") {
+							Patterns = (extract == input ?
+								new List<string> { "xnb", "xwb" } :
+								new List<string> { "png", "bmp", "jpg", "wav", "mp3", "mp2", "mpga", "m4a", "aac", "flac", "ogg", "wma", "aif", "aiff", "aifc" })
+						},
+						new FilePickerFileType("All files") { Patterns = new List<string> { "*" } }
+					};
+					if (input) {
+						var options = new FilePickerOpenOptions {
+							Title = "Choose " + (input ? "input" : "output") + " file",
+							AllowMultiple = false,
+							SuggestedFileName = !string.IsNullOrEmpty(currentPath) ? Path.GetFileName(currentPath) : null,
+							SuggestedStartLocation = start,
+							FileTypeFilter = filters
+						};
+						var result = await StorageProvider.OpenFilePickerAsync(options);
+						if (result != null && result.Count > 0) {
+							string file = result[0].Path.LocalPath;
+							try {
+								lastFilePath = Path.GetDirectoryName(file);
+							}
+							catch { }
+							return file;
 						}
 					}
 					else {
-						dialog.InitialDirectory = lastFilePath;
-					}
-					var result = dialog.ShowDialog(this);
-					try {
-						lastFilePath = Path.GetDirectoryName(dialog.FileName);
-					}
-					catch { }
-					if (result.HasValue && result.Value) {
-						return dialog.FileName;
+						var options = new FilePickerSaveOptions {
+							Title = "Choose " + (input ? "input" : "output") + " file",
+							SuggestedFileName = !string.IsNullOrEmpty(currentPath) ? Path.GetFileName(currentPath) : null,
+							SuggestedStartLocation = start,
+							FileTypeChoices = filters
+						};
+						var result = await StorageProvider.SaveFilePickerAsync(options);
+						if (result != null) {
+							string file = result.Path.LocalPath;
+							try {
+								lastFilePath = Path.GetDirectoryName(file);
+							}
+							catch { }
+							return file;
+						}
 					}
 					break;
 				}

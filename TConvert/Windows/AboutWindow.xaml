@@ -1,8 +1,8 @@
-﻿<Window x:Class="TConvert.Windows.AboutWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        Title="About TConvert" Background="#FFF0F0F0" WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False" Icon="/Resources/Icons/About.png" SnapsToDevicePixels="True" UseLayoutRounding="True" SizeToContent="WidthAndHeight" Loaded="OnWindowLoaded">
+        x:Class="TConvert.Windows.AboutWindow"
+        Title="About TConvert" Background="#FFF0F0F0" WindowStartupLocation="CenterOwner" CanResize="False" ShowInTaskbar="False" Icon="avares://TConvert/Resources/Icons/About.png" UseLayoutRounding="True" SizeToContent="WidthAndHeight" Loaded="OnWindowLoaded">
 
     <Grid x:Name="clientArea" Width="384" Height="270">
         <Rectangle Fill="#FF72B8D8" HorizontalAlignment="Left" Height="103" Margin="-71,-16,0,0" VerticalAlignment="Top" Width="211" RenderTransformOrigin="0.5,0.5">
@@ -15,7 +15,7 @@
                 </TransformGroup>
             </Rectangle.RenderTransform>
         </Rectangle>
-        <Image HorizontalAlignment="Left" Height="112" Margin="10,13,0,0" VerticalAlignment="Top" Width="112" Source="/Resources/Logo112.png"/>
+        <Image HorizontalAlignment="Left" Height="112" Margin="10,13,0,0" VerticalAlignment="Top" Width="112" Source="avares://TConvert/Resources/Logo112.png"/>
         <GroupBox Header="Details" Margin="138,10,10,0" VerticalAlignment="Top" BorderBrush="#FFA9B1B6" Height="128">
             <Grid>
                 <Label x:Name="labelVersion" Content="1.0.0.0" HorizontalAlignment="Left" Margin="72,26,0,0" VerticalAlignment="Top"/>
@@ -30,7 +30,7 @@
             </Grid>
         </GroupBox>
         <GroupBox Header="Description" Margin="10,143,10,40" BorderBrush="#FFA9B1B6">
-            <TextBlock x:Name="textBlockDescription" TextWrapping="WrapWithOverflow" Text="A combination tool for managing Terraria content resources. Convert, extract, backup, and restore. The unofficial sequal to TExtract." Margin="4" Padding="4" VerticalAlignment="Top"/>
+            <TextBlock x:Name="textBlockDescription" TextWrapping="Wrap" Text="A combination tool for managing Terraria content resources. Convert, extract, backup, and restore. The unofficial sequal to TExtract." Margin="4" Padding="4" VerticalAlignment="Top"/>
         </GroupBox>
         <Button Content="Close" HorizontalAlignment="Right" Margin="0,0,10,10" VerticalAlignment="Bottom" Width="80" IsDefault="True" IsCancel="True"/>
 

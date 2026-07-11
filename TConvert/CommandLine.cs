@@ -7,7 +7,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TConvert.Convert;
-using TConvert.Properties;
 
 namespace TConvert {
 	/**<summary>Handles command line execution.</summary>*/
@@ -125,13 +124,13 @@ namespace TConvert {
 		/**<summary>True if there is no console output.</summary>*/
 		private static bool silent = false;
 		/**<summary>True if the progress window auto-closes.</summary>*/
-		private static bool autoClose = Settings.Default.AutoCloseCmdProgress;
+		private static bool autoClose = true;
 		/**<summary>True if images are compressed.</summary>*/
-		private static bool compress = Settings.Default.CompressImages;
+		private static bool compress = true;
 		/**<summary>True if alpha is premultiplied.</summary>*/
-		private static bool premultiply = Settings.Default.PremultiplyAlpha;
+		private static bool premultiply = true;
 		/**<summary>True if a sound is played upon completion.</summary>*/
-		private static bool sound = Settings.Default.CompletionSound;
+		private static bool sound = false;
 		/**<summary>True if in console-only mode.</summary>*/
 		private static bool console = false;
 		/**<summary>The list of lines ready to be written to the console.</summary>*/
@@ -321,17 +320,13 @@ namespace TConvert {
 			if (!silent)
 				WriteLog();
 			if (!error && inputs.Count > 0) {
-				#if !(CONSOLE)
-				if (!console) {
-					App app = new App();
-					app.InitializeComponent();
-					app.Run();
-				}
-				else
-				#endif
-				{
-					ProcessFiles();
-				}
+#if !(CONSOLE)
+				// The Avalonia application and its message loop are already running
+				// (started from the program entry point), so just start processing.
+				ProcessFiles();
+#else
+				ProcessFiles();
+#endif
 			}
 		}
 		/**<summary>Processes the files when ready.</summary>*/

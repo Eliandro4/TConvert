@@ -5,14 +5,9 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace TConvert.Windows {
 	/**<summary>The window showing information about the program.</summary>*/
@@ -61,7 +56,7 @@ namespace TConvert.Windows {
 		#region Events
 
 		private void OnWindowLoaded(object sender, RoutedEventArgs e) {
-			clientArea.Height = 214 + textBlockDescription.ActualHeight;
+			clientArea.Height = 214 + textBlockDescription.Bounds.Height;
 		}
 
 		#endregion
@@ -71,8 +66,7 @@ namespace TConvert.Windows {
 		/**<summary>Shows the window.</summary>*/
 		public static void Show(Window owner) {
 			AboutWindow window = new AboutWindow();
-			window.Owner = owner;
-			window.ShowDialog();
+			window.ShowDialog(owner);
 		}
 
 		#endregion

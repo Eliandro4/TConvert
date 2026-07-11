@@ -13,10 +13,9 @@ using TConvert.Convert;
 using TConvert.Extract;
 using TConvert.Util;
 #if !(CONSOLE)
-using System.Media;
-using System.Windows;
-using System.Windows.Shell;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using TConvert.Windows;
 #endif
 
@@ -95,6 +94,10 @@ namespace TConvert {
 		//--------------------------------
 		#region Processing
 
+#if !(CONSOLE)
+		/**<summary>The application's main window, used as the owner for child windows.</summary>*/
+		public static Window MainWindow { get; set; }
+#endif
 		/**<summary>The lasy time the progress was updated.</summary>*/
 		private static DateTime lastUpdate = DateTime.MinValue;
 		/**<summary>The total number of files to process.</summary>*/
@@ -158,17 +161,13 @@ namespace TConvert {
 			progressWindow = new ProgressWindow(thread, OnProgressCancel);
 			if (owner != null) {
 				progressWindow.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-				progressWindow.Owner = owner;
 			}
-			if (Application.Current.MainWindow == null)
-				Application.Current.MainWindow = progressWindow;
-			// Prevent Explorer from freazing until the progress window is closed
-			Thread showThread = new Thread(() => {
-				Application.Current.Dispatcher.Invoke(() => {
-					progressWindow.ShowDialog();
-				});
+			if (MainWindow == null)
+				MainWindow = progressWindow;
+			// Prevent Explorer from freezing until the progress window is closed
+			Dispatcher.UIThread.InvokeAsync(async () => {
+				await progressWindow.ShowDialog(owner);
 			});
-			showThread.Start();
 		}
 #endif
 		/**<summary>Starts a console processing thread.</summary>*/
@@ -250,7 +249,7 @@ namespace TConvert {
 			#if !(CONSOLE)
 			if (progressWindow != null) {
 				if (lastUpdate + UpdateSpan < DateTime.Now || forceUpdate) {
-					progressWindow.Dispatcher.Invoke(() => {
+					Dispatcher.UIThread.InvokeAsync(() => {
 						progressWindow.Update(message, totalFiles == 0 ? 0 : ((double)filesCompleted / totalFiles));
 					});
 					lastUpdate = DateTime.Now;
@@ -270,21 +269,21 @@ namespace TConvert {
 			Directory.SetCurrentDirectory(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location));
 			#if !(CONSOLE)
 			if (progressWindow != null) {
-				progressWindow.Dispatcher.Invoke(() => {
+				Dispatcher.UIThread.InvokeAsync(() => {
 					progressWindow.Finish(message, errorLog.Count > 0);
 				});
 				ErrorLogger.Close();
 				if (errorLog.Count > 0) {
 					if (completionSound)
-						SystemSounds.Exclamation.Play();
+						Sound.Exclamation();
 					ShowErrorLog();
 					errorLog.Clear();
 				}
 				else if (completionSound) {
-					SystemSounds.Asterisk.Play();
+					Sound.Asterisk();
 				}
 				if (autoCloseProgress) {
-					progressWindow.Dispatcher.Invoke(() => {
+					Dispatcher.UIThread.InvokeAsync(() => {
 						progressWindow.Close();
 					});
 				}
@@ -302,28 +301,22 @@ namespace TConvert {
 		}
 		/**<summary>Shows the error log if necissary.</summary>*/
 		public static void ShowErrorLog() {
-			#if !(CONSOLE)
+#if !(CONSOLE)
 			if (!console) {
-				App.Current.Dispatcher.Invoke(() => {
-					DispatcherObject dispatcher;
+				Dispatcher.UIThread.InvokeAsync(() => {
 					Window window = null;
 					if (progressWindow != null && !autoCloseProgress) {
 						window = progressWindow;
-						dispatcher = window;
 					}
-					else if (App.Current.MainWindow != null) {
-						window = App.Current.MainWindow;
-						dispatcher = window;
-					}
-					else {
-						dispatcher = Application.Current;
+					else if (MainWindow != null) {
+						window = MainWindow;
 					}
 					ErrorLogWindow.Show(window, errorLog.ToArray());
 					errorLog.Clear();
 				});
 			}
 			else
-			#endif
+#endif
 			{
 				if (!silent) {
 					ConsoleColor oldColor = Console.ForegroundColor;

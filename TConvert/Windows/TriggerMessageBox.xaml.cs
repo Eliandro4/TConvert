@@ -1,9 +1,12 @@
 ﻿using System;
-using System.Media;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media.Imaging;
+using System.Linq;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Interactivity;
+using TConvert.Util;
 
 namespace TConvert.Windows {
 	/**<summary>The different types of icons available for message boxes.</summary>*/
@@ -17,6 +20,21 @@ namespace TConvert.Windows {
 		/**<summary>A red (!) icon.</summary>*/
 		Error
 	}
+	/**<summary>The different button configurations for message boxes.</summary>*/
+	public enum MessageBoxButton {
+		OK,
+		OKCancel,
+		YesNo,
+		YesNoCancel
+	}
+	/**<summary>The result of pressing a message box button.</summary>*/
+	public enum MessageBoxResult {
+		None,
+		OK,
+		Cancel,
+		Yes,
+		No
+	}
 
 	/**<summary>A custom message box that doesn't look like shite.</summary>*/
 	public partial class TriggerMessageBox : Window {
@@ -29,8 +47,6 @@ namespace TConvert.Windows {
 		private int minWidth;
 		/**<summary>The message box buttons setup.</summary>*/
 		private MessageBoxButton buttons;
-		/**<summary>The icon of the message.</summary>*/
-		private MessageIcon icon;
 
 		#endregion
 		//========= CONSTRUCTORS =========
@@ -40,25 +56,7 @@ namespace TConvert.Windows {
 		private TriggerMessageBox(MessageIcon icon, string title, string message, MessageBoxButton buttons, string buttonName1 = null, string buttonName2 = null, string buttonName3 = null) {
 			InitializeComponent();
 			this.buttons = buttons;
-			this.icon = icon;
 			this.minWidth = 280;
-
-			#region Load Message Icons
-			switch (icon) {
-			case MessageIcon.Info:
-				this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/Icons/InfoIcon.png"));
-				break;
-			case MessageIcon.Question:
-				this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/Icons/QuestionIcon.png"));
-				break;
-			case MessageIcon.Warning:
-				this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/Icons/WarningIcon.png"));
-				break;
-			case MessageIcon.Error:
-				this.Icon = new BitmapImage(new Uri("pack://application:,,,/Resources/Icons/ErrorIcon.png"));
-				break;
-			}
-			#endregion
 
 			// Setup the buttons
 			switch (buttons) {
@@ -67,8 +65,8 @@ namespace TConvert.Windows {
 				button1.IsDefault = true;
 				button1.Content = "OK";
 				button1.Tag = MessageBoxResult.OK;
-				button2.Visibility = Visibility.Collapsed;
-				button3.Visibility = Visibility.Collapsed;
+				button2.IsVisible = false;
+				button3.IsVisible = false;
 				minWidth -= 85 * 2;
 				result = MessageBoxResult.OK;
 				if (buttonName1 != null)
@@ -83,7 +81,7 @@ namespace TConvert.Windows {
 				button2.IsCancel = true;
 				button2.Content = "Cancel";
 				button2.Tag = MessageBoxResult.Cancel;
-				button3.Visibility = Visibility.Collapsed;
+				button3.IsVisible = false;
 				minWidth -= 85;
 				result = MessageBoxResult.Cancel;
 				if (buttonName1 != null)
@@ -100,7 +98,7 @@ namespace TConvert.Windows {
 				button2.IsCancel = true;
 				button2.Content = "No";
 				button2.Tag = MessageBoxResult.No;
-				button3.Visibility = Visibility.Collapsed;
+				button3.IsVisible = false;
 				minWidth -= 85;
 				result = MessageBoxResult.No;
 				if (buttonName1 != null)
@@ -132,6 +130,7 @@ namespace TConvert.Windows {
 
 			this.Title = title;
 			this.textBlockMessage.Text = message;
+			this.iconTemp = icon;
 		}
 
 		#endregion
@@ -162,6 +161,78 @@ namespace TConvert.Windows {
 			}
 			return null;
 		}
+
+		#endregion
+		//============ EVENTS ============
+		#region Events
+
+		private void OnWindowLoaded(object sender, RoutedEventArgs e) {
+			#region Load Message Sounds
+			switch (iconTemp) {
+			case MessageIcon.Info: Sound.Asterisk(); break;
+			case MessageIcon.Question: Sound.Asterisk(); break;
+			case MessageIcon.Warning: Sound.Exclamation(); break;
+			case MessageIcon.Error: Sound.Hand(); break;
+			}
+			#endregion
+		}
+		private void OnButtonClicked(object sender, RoutedEventArgs e) {
+			result = (MessageBoxResult)((Button)sender).Tag;
+			Close(result);
+		}
+		private void OnPreviewKeyDown(object sender, KeyEventArgs e) {
+			int focused = CurrentFocusedIndex();
+			switch (e.Key) {
+			case Key.Right:
+				if (focused < 0 && ButtonCount > 1)
+					GetButtonAt(1).Focus();
+				else if (focused >= 0 && focused < ButtonCount - 1)
+					GetButtonAt(focused + 1).Focus();
+				e.Handled = true;
+				break;
+			case Key.Left:
+				if (focused > 0)
+					GetButtonAt(focused - 1).Focus();
+				e.Handled = true;
+				break;
+			}
+		}
+		/**<summary>Gets the index of the currently focused button, or -1.</summary>*/
+		private int CurrentFocusedIndex() {
+			if (button1.IsVisible && button1.IsFocused) return 0;
+			if (button2.IsVisible && button2.IsFocused) return 1;
+			if (button3.IsVisible && button3.IsFocused) return 2;
+			return -1;
+		}
+
+		#endregion
+		//=========== SHOWING ============
+		#region Showing
+
+		/**<summary>Shows the message box.</summary>*/
+		public static Task<MessageBoxResult> Show(Window window, MessageIcon icon, string message) {
+			return Show(window, icon, message, "", MessageBoxButton.OK);
+		}
+		/**<summary>Shows the message box.</summary>*/
+		public static Task<MessageBoxResult> Show(Window window, MessageIcon icon, string message, string title) {
+			return Show(window, icon, message, title, MessageBoxButton.OK);
+		}
+		/**<summary>Shows the message box.</summary>*/
+		public static Task<MessageBoxResult> Show(Window window, MessageIcon icon, string message, MessageBoxButton buttons) {
+			return Show(window, icon, message, "", buttons);
+		}
+		/**<summary>Shows the message box.</summary>*/
+		public static async Task<MessageBoxResult> Show(Window window, MessageIcon icon, string message, string title, MessageBoxButton buttons, string buttonName1 = null, string buttonName2 = null, string buttonName3 = null) {
+			TriggerMessageBox messageBox = new TriggerMessageBox(icon, title, message, buttons, buttonName1, buttonName2, buttonName3);
+			if (window == null || !window.IsVisible)
+				messageBox.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+			return await messageBox.ShowDialog<MessageBoxResult>(window);
+		}
+
+		#endregion
+
+		/**<summary>Stores the icon for the loaded sound handler.</summary>*/
+		private MessageIcon iconTemp;
 		/**<summary>Gets the index of the button.</summary>*/
 		private int IndexOfButton(Button button) {
 			if (button == button1)
@@ -172,73 +243,5 @@ namespace TConvert.Windows {
 				return 2;
 			return -1;
 		}
-
-		#endregion
-		//============ EVENTS ============
-		#region Events
-
-		private void OnWindowLoaded(object sender, RoutedEventArgs e) {
-			clientArea.Width = Math.Max(minWidth, Math.Max(textBlockMessage.ActualWidth + 60, stackPanelButtons.ActualWidth + 10));
-			clientArea.Height += textBlockMessage.ActualHeight - 16;
-
-			#region Load Message Sounds
-			switch (icon) {
-			case MessageIcon.Info: SystemSounds.Asterisk.Play(); break;
-			case MessageIcon.Question: SystemSounds.Asterisk.Play(); break;
-			case MessageIcon.Warning: SystemSounds.Exclamation.Play(); break;
-			case MessageIcon.Error: SystemSounds.Hand.Play(); break;
-			}
-			#endregion
-		}
-		private void OnButtonClicked(object sender, RoutedEventArgs e) {
-			result = (MessageBoxResult)((Button)sender).Tag;
-			Close();
-		}
-		private void OnPreviewKeyDown(object sender, KeyEventArgs e) {
-			var button = FocusManager.GetFocusedElement(this) as Button;
-			switch (e.Key) {
-			case Key.Right:
-				if (button == null && ButtonCount > 1)
-					GetButtonAt(1).Focus();
-				else if (button != null && IndexOfButton(button) < ButtonCount - 1)
-					button.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-				e.Handled = true;
-				break;
-			case Key.Left:
-				if (button != null && IndexOfButton(button) > 0)
-					button.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
-				e.Handled = true;
-				break;
-			}
-		}
-
-		#endregion
-		//=========== SHOWING ============
-		#region Showing
-
-		/**<summary>Shows the message box.</summary>*/
-		public static MessageBoxResult Show(Window window, MessageIcon icon, string message) {
-			return Show(window, icon, message, "", MessageBoxButton.OK);
-		}
-		/**<summary>Shows the message box.</summary>*/
-		public static MessageBoxResult Show(Window window, MessageIcon icon, string message, string title) {
-			return Show(window, icon, message, title, MessageBoxButton.OK);
-		}
-		/**<summary>Shows the message box.</summary>*/
-		public static MessageBoxResult Show(Window window, MessageIcon icon, string message, MessageBoxButton buttons) {
-			return Show(window, icon, message, "", buttons);
-		}
-		/**<summary>Shows the message box.</summary>*/
-		public static MessageBoxResult Show(Window window, MessageIcon icon, string message, string title, MessageBoxButton buttons, string buttonName1 = null, string buttonName2 = null, string buttonName3 = null) {
-			TriggerMessageBox messageBox = new TriggerMessageBox(icon, title, message, buttons, buttonName1, buttonName2, buttonName3);
-			if (window == null || window.Visibility != Visibility.Visible)
-				messageBox.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-			else
-				messageBox.Owner = window;
-			messageBox.ShowDialog();
-			return messageBox.result;
-		}
-
-		#endregion
 	}
 }
